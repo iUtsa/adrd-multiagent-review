@@ -1,6 +1,6 @@
 # Multi-Agent Scoping Review of ADRD Screening Literature — Architecture
 
-> Status: **design proposal (v0.1)**. The human gold standard (3 reviewers, 268 articles) is complete.
+> Status: **design proposal (v0.2, revised after literature review)**. The human gold standard (3 reviewers, 268 articles) is complete.
 > This document describes the agent side: a LangGraph multi-agent system whose output is evaluated against that gold standard.
 
 ---
@@ -12,13 +12,24 @@ The prior system (LangChain + Django REST) used **two sequential agents**: an Ex
 | Weakness observed in the 2-agent system | Design response in this architecture |
 |---|---|
 | Nuanced contextual judgment | **Independent reviewer panel** (3 agents with different perspectives, run blind) instead of a single annotator. Disagreement becomes a signal, not a hidden error. |
-| Borderline studies | **Structured deliberation + Adjudicator**. Split votes trigger an evidence-based debate. Items still unresolved are routed to a human. |
+| Borderline studies | **Heterogeneous voting + targeted deliberation + Adjudicator**. Only split items are debated, using anti-conformity rules. Anything still unresolved goes to a human. |
 | Domain-specific expertise | **Specialist tools** (screening-instrument lexicon, ADRD dataset registry, MeSH lookup) available to every reviewer, plus perspective-specific system prompts. |
 | Iterative refinement of criteria | **Versioned codebook + Codebook Curator agent** that mines disagreement patterns on a *calibration split* and proposes clarifications for the PI to approve. |
 | Variable abstract reporting quality | **Triage agent** scores abstract completeness and pulls PMC Open Access full text when the abstract is insufficient. |
 | Need for human-in-the-loop and transparency | Every decision stores **rationale + verbatim evidence spans + codebook rule IDs**. A Verifier checks grounding. LangGraph `interrupt()` provides a human review queue. |
 
 **Core principle:** the agent side should *mirror the human protocol* (independent dual/triple review → reconciliation → adjudication). That makes the agent-vs-human comparison methodologically clean, including inter-rater reliability.
+
+### 1.1 What prior work says, and how it shaped v0.2
+
+| Finding | Design consequence |
+|---|---|
+| Across benchmarks, multi-agent debate rarely beats plain majority voting. Most of debate's gain comes from ensembling several models, not from the debate itself [1]. | **Majority vote over a heterogeneous panel is the default resolver (E2).** Debate is an *experimental condition* (E3) that must earn its place, not an assumption. |
+| For LLM abstract screening specifically, soft majority voting across *different model families* was the best strategy and cost <1/14 of adjudication. Debate made models converge and lose diversity, which hurt. Debate mainly helped the weakest model [2]. | **Model diversity is the default** (different vendors per reviewer). Deliberation is limited to split items and keeps the blind-round votes. |
+| Majority pressure suppresses correct minority agents: weak models corrected an incorrect majority only 3.6% of the time, strong models 30–34%. Evidence-based revisions exceeded 90% correction [3]. | **Anti-conformity deliberation:** show arguments without vote tallies, let the minority argue first, and require new evidence for any vote change. Measure flips toward vs away from gold. |
+| In a complex scoping review, two identical LLM runs differed on 94 of 1,131 records, 29 of them eligible. The authors advise against autonomous exclusion [4]. | **Recall guard at screening:** no article is auto-excluded unless *all* reviewers exclude it. Run-to-run consistency becomes a reported metric. |
+| LLM-human disagreement stems mainly from boundary ambiguity in criteria, keyword over-emphasis and wrong topic inference (κ 0.52–0.77) [5]. | **Codebook entries carry definitions and boundary examples**, and errors are coded with this taxonomy during analysis. |
+| An adjudicator that *weights* reviewer scores beat one that *picks* a single answer [2]. | **The Adjudicator weights votes; it does not override them.** |
 
 ---
 
@@ -92,9 +103,12 @@ flowchart LR
     RB --> AG
     RC --> AG
     AG -->|unanimous| ACC["accept"]
-    AG -->|split, rounds left| DL["deliberate<br/>each reviewer sees peers' votes + evidence"]
+    AG -->|split| POL{"split policy<br/>(set per experiment)"}
+    POL -->|"E2: vote"| VOTE["weighted majority vote"]
+    VOTE --> ACC
+    POL -->|"E3+: rounds left"| DL["deliberate<br/>arguments shown, tallies hidden,<br/>minority argues first"]
     DL --> AG
-    AG -->|split, no rounds left| ADJ["adjudicator<br/>stronger model, cites codebook rule"]
+    POL -->|"E3+: rounds used up"| ADJ["adjudicator<br/>weights votes, cites codebook rule"]
     ADJ -->|confidence above threshold| ACC
     ADJ -->|confidence below threshold| H["human_review<br/>LangGraph interrupt()"]
     H --> ACC
@@ -106,10 +120,15 @@ flowchart LR
 Agents do **not** chat freely. They exchange **structured messages** on a shared blackboard (the LangGraph state). This keeps the process auditable and prevents the loudest agent from dominating.
 
 1. **Blind round (independence).** Each reviewer sees only the article and the codebook, never the other votes. This mirrors independent human review and keeps inter-agent agreement statistics meaningful.
-2. **Agreement check (code, not an LLM).** Unanimous → accept. Otherwise → deliberate. For annotation, the check is **per field**, so only disputed dimensions are debated.
-3. **Deliberation (max 2 rounds).** Each reviewer receives the other reviewers' votes, rationales and evidence quotes (anonymized as "Reviewer 1/2"). It may keep or revise its vote, but **a revision must cite a new evidence span or codebook rule**. A change that cites nothing is rejected. This guards against sycophantic conformity.
-4. **Adjudication.** If the vote is still split, the Adjudicator reads the full transcript and issues a final decision, the codebook rule it relied on, and a confidence score.
-5. **Escalation.** Low-confidence adjudications, and anything the Verifier fails, go to a human queue. This is the human-in-the-loop protocol from the paper's recommendations.
+2. **Agreement check (code, not an LLM).** Unanimous → accept. Otherwise the configured split policy applies. For annotation, the check is **per field**, so only disputed dimensions are ever voted on or debated.
+3. **Majority vote (E2, the default).** Weighted by each reviewer's calibration-split accuracy. Prior work shows this is a strong, cheap baseline that debate often fails to beat [1][2].
+4. **Deliberation (E3+, max 2 rounds), designed against conformity [3]:**
+   - Reviewers see the *arguments and evidence* on each side, anonymized, **but not the vote count**, so there is no visible majority to defer to.
+   - The **minority reviewer argues first**, and the others must respond to its evidence.
+   - **A revision must cite a new evidence span or codebook rule.** A change that cites nothing is rejected and the original vote stands.
+   - Blind-round votes are **never overwritten**. Both are stored, so the effect of debate can be measured directly.
+5. **Adjudication.** If the vote is still split, the Adjudicator reads the transcript and produces a *weighting* of the reviewers' positions (not a free override), the codebook rule it relied on, and a confidence score [2].
+6. **Escalation.** Low-confidence adjudications, and anything the Verifier fails, go to a human queue. This is the human-in-the-loop protocol from the paper's recommendations.
 
 ```mermaid
 sequenceDiagram
@@ -129,13 +148,13 @@ sequenceDiagram
     A-->>O: INCLUDE, evidence, rule I2
     B-->>O: INCLUDE, evidence, rule I2
     C-->>O: EXCLUDE, evidence, rule E3
-    Note over O: 2-1 split, start deliberation round 1
-    O->>A: peers' votes + evidence (anonymized)
-    O->>B: peers' votes + evidence (anonymized)
-    O->>C: peers' votes + evidence (anonymized)
+    Note over O: split, start deliberation round 1 (tallies hidden)
+    O->>C: arguments + evidence on each side
+    C-->>O: minority argues first: EXCLUDE, new quote for E3
+    O->>A: both sides' arguments incl. C's new quote
+    O->>B: both sides' arguments incl. C's new quote
     A-->>O: keep INCLUDE, rebuts E3 with quote
-    B-->>O: keep INCLUDE
-    C-->>O: keep EXCLUDE, new quote
+    B-->>O: revise to EXCLUDE, cites new evidence (accepted)
     alt converged
         O->>O: accept consensus
     else still split after max rounds
@@ -150,10 +169,21 @@ sequenceDiagram
 
 ### 3.3 Panel diversity
 
-Three agents built on the same model and prompt tend to fail in the same way. Diversity comes from two knobs, and each is an experimental factor (see §7):
+Three agents built on the same model and prompt tend to fail in the same way. In prior screening work, the benefit of a panel came from **model diversity** [2]. Diversity has two knobs:
 
-- **Perspective diversity:** the same model with different system prompts (clinical neurology, epidemiology/population, research methods/data source).
-- **Model diversity:** different model families per reviewer (for example one frontier closed model, one other-vendor closed model, one open-weights model).
+- **Model diversity (default):** a different model family per reviewer, for example two different-vendor closed models and one open-weights model.
+- **Perspective diversity:** different system prompts on each reviewer (clinical neurology, epidemiology/population, research methods/data source). This is layered on top of model diversity by default. A persona-only panel (one model, three prompts) is an ablation.
+
+Reviewers should be of reasonably strong capability. Debate is bounded by the strongest agent, and weak agents rarely overturn a wrong majority [3].
+
+### 3.4 Screening vs annotation use different decision rules
+
+- **Screening (recall matters most).** Missing an eligible study is worse than reviewing an extra one. An article is auto-excluded **only if all reviewers exclude it**. Any split goes on to the split policy and never becomes a silent exclusion [4].
+- **Annotation (balanced accuracy).** The standard split policy applies per field.
+
+### 3.5 Panel size
+
+Three reviewers mirror the three human reviewers and are the main condition. Panel size (3 / 5 / 7, always odd) is an experimental factor, used to find where accuracy stops improving relative to cost.
 
 ---
 
@@ -166,7 +196,7 @@ Three agents built on the same model and prompt tend to fail in the same way. Di
 | **Screening Reviewer ×3** | Include/exclude decision per codebook criteria | `Article` → `ScreeningVote` | MeSH lookup | mid, diverse |
 | **Extraction** | Capture key data elements with verbatim evidence spans | `Article` → `ExtractionRecord` | none (structured output) | mid |
 | **Annotation Reviewer ×3** | Label each dimension (instrument type, target population, dataset source, …) | `Article` + `ExtractionRecord` → `AnnotationVote` | instrument lexicon, dataset registry | mid, diverse |
-| **Adjudicator** | Resolve split votes after deliberation | transcript → `Decision` | codebook | strongest |
+| **Adjudicator** | Resolve split votes after deliberation by weighting reviewer positions (not overriding them) | transcript → `Decision` | codebook | strongest |
 | **Verifier** | (a) deterministic check that each evidence quote exists in the source; (b) LLM check that the label follows from the cited rule | `Decision` → pass/fail | fuzzy string match | mid |
 | **Codebook Curator** | Cluster disagreements on the **calibration split** and propose codebook clarifications | disagreement log → proposal | none | strongest |
 | **Orchestrator** | The LangGraph graph itself: routing, fan-out, retries, budgets | — | — | none (code) |
@@ -247,6 +277,8 @@ class ArticleState(TypedDict):
 | Human-in-the-loop value | Escalation rate. Accuracy on auto-accepted items vs escalated items (coverage–accuracy curve) |
 | Efficiency | Wall-clock time-to-completion, tokens, $ cost, per article and total. Compare to the 47.7× result. |
 | Transparency | % of decisions with verified evidence spans (Verifier pass rate) |
+| Run-to-run consistency | Cohen's κ between repeated identical runs, plus the number of eligible studies that only one run kept [4] |
+| Error analysis | Each disagreement with gold coded as boundary ambiguity / keyword over-emphasis / wrong topic inference / abstract missing information [5] |
 
 ### 7.2 Experimental conditions (ablation ladder)
 
@@ -254,12 +286,14 @@ class ArticleState(TypedDict):
 |---|---|---|
 | E0 | Prior 2-agent system (existing results) | baseline |
 | E1 | Single reviewer agent, new codebook | Does the codebook/prompting alone help? |
-| E2 | 3-agent panel, majority vote, **no talking** | Value of redundancy |
-| E3 | E2 + deliberation | Value of agents talking to each other |
+| E2 | 3-agent heterogeneous panel, weighted majority vote, **no talking** | Value of redundancy. Prior work predicts this is a strong baseline [1][2]. |
+| E3 | E2 + anti-conformity deliberation on split items | Does talking add anything beyond voting on *nuanced ADRD annotation*? This is the key research question. |
 | E4 | E3 + Adjudicator | Value of a senior arbiter |
 | E5 | E4 + human review of escalations | Accuracy vs. human effort trade-off |
 
-Crossed factors: **homogeneous vs heterogeneous models**, **abstract-only vs triage + full text**, **specialist-per-dimension vs generalist annotators**.
+Crossed factors: **heterogeneous vs single-model (persona-only) panel**, **panel size 3 / 5 / 7**, **abstract-only vs triage + full text**, **specialist-per-dimension vs generalist annotators**.
+
+Prior work found debate did not beat voting on general tasks and on binary screening [1][2]. But it did help weaker models, and our 2-agent results pinpoint *nuanced contextual judgment* as the failure mode. Whether E3 beats E2 on ADRD annotation is therefore an open, publishable question, whichever way the result goes.
 
 ```mermaid
 flowchart LR
@@ -310,3 +344,15 @@ adrd-multiagent-review/
 4. **Models and budget.** Which LLM providers are approved, and what is the budget? Is an open-weights model required for reproducibility?
 5. **Full text.** Is using PMC Open Access full text in scope, or must the comparison be abstract-only to match the human protocol?
 6. **Timing comparability.** How was human time-to-completion measured, so agent timing can be reported on the same basis?
+7. **Scale of the panel.** Does "multi-agent" mean more reviewers on the same task, more specialized roles, agents debating, or all three? The design supports each; the answer sets the priority order of experiments.
+
+---
+
+## References
+
+1. *Debate or Vote: Which Yields Better Decisions in Multi-Agent Large Language Models?* arXiv:2508.17536 (2025). https://arxiv.org/abs/2508.17536
+2. Akinseloyin, Jiang, Palade. *LLM-based Multi-Agent Collaboration for Abstract Screening towards Automated Systematic Reviews.* medRxiv 2025.08.11.25333429; published version in PMC. https://pmc.ncbi.nlm.nih.gov/articles/PMC12952526/
+3. *Can LLM Agents Really Debate? A Controlled Study of Multi-Agent Debate in Logical Reasoning.* arXiv:2511.07784 (2025). https://arxiv.org/abs/2511.07784
+4. *Evaluating human and LLM screening workflows in a conceptually complex scoping review: Recall–workload trade-offs and run-to-run consistency.* arXiv:2608.26885 (2026). https://arxiv.org/abs/2608.26885
+5. *Understanding LLMs in Title-Abstract Screening: From Disagreements to Recommendations.* arXiv:2606.17588 (2026). https://arxiv.org/abs/2606.17588
+6. LangGraph interrupts / human-in-the-loop documentation. https://docs.langchain.com/oss/python/langgraph/interrupts
