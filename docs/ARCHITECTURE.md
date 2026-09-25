@@ -24,7 +24,7 @@ The prior system (LangChain + Django REST) used **two sequential agents**: an Ex
 
 | Finding | Design consequence |
 |---|---|
-| Across benchmarks, multi-agent debate rarely beats plain majority voting. Most of debate's gain comes from ensembling several models, not from the debate itself [1]. | **Majority vote over a heterogeneous panel is the default resolver (E2).** Debate is an *experimental condition* (E3) that must earn its place, not an assumption. |
+| Across benchmarks, multi-agent debate rarely beats plain majority voting. Most of debate's gain comes from ensembling several models, not from the debate itself [1]. | **Agents talking (deliberation) stays the core of the proposed system.** It is always compared against a simple voting baseline (E2), so the paper can *show* that the communication adds value. |
 | For LLM abstract screening specifically, soft majority voting across *different model families* was the best strategy and cost <1/14 of adjudication. Debate made models converge and lose diversity, which hurt. Debate mainly helped the weakest model [2]. | **Model diversity is the default** (different vendors per reviewer). Deliberation is limited to split items and keeps the blind-round votes. |
 | Majority pressure suppresses correct minority agents: weak models corrected an incorrect majority only 3.6% of the time, strong models 30–34%. Evidence-based revisions exceeded 90% correction [3]. | **Anti-conformity deliberation:** show arguments without vote tallies, let the minority argue first, and require new evidence for any vote change. Measure flips toward vs away from gold. |
 | In a complex scoping review, two identical LLM runs differed on 94 of 1,131 records, 29 of them eligible. The authors advise against autonomous exclusion [4]. | **Recall guard at screening:** no article is auto-excluded unless *all* reviewers exclude it. Run-to-run consistency becomes a reported metric. |
@@ -53,7 +53,7 @@ flowchart TB
     end
 
     subgraph P2["2. Screening panel (include / exclude)"]
-        SP["3 blind reviewers<br/>+ Consensus subgraph"]
+        SP["3 reviewer agents<br/>blind vote, then talk it out,<br/>then adjudicator"]
     end
 
     subgraph P3["3. Extraction"]
@@ -61,7 +61,7 @@ flowchart TB
     end
 
     subgraph P4["4. Annotation panel (per dimension)"]
-        AP["3 blind reviewers<br/>+ Consensus subgraph (field-level)"]
+        AP["3 reviewer agents per field<br/>blind vote, then talk it out,<br/>then adjudicator"]
     end
 
     subgraph P5["5. Verification and output"]
@@ -103,32 +103,34 @@ flowchart LR
     RB --> AG
     RC --> AG
     AG -->|unanimous| ACC["accept"]
-    AG -->|split| POL{"split policy<br/>(set per experiment)"}
-    POL -->|"E2: vote"| VOTE["weighted majority vote"]
-    VOTE --> ACC
-    POL -->|"E3+: rounds left"| DL["deliberate<br/>arguments shown, tallies hidden,<br/>minority argues first"]
-    DL --> AG
-    POL -->|"E3+: rounds used up"| ADJ["adjudicator<br/>weights votes, cites codebook rule"]
+    AG ==>|"split, rounds left"| DL["DELIBERATE: agents talk<br/>minority argues first,<br/>peers answer its evidence,<br/>vote tallies hidden"]
+    DL ==>|revised votes| AG
+    AG ==>|"split, rounds used up"| ADJ["adjudicator<br/>weights votes, cites codebook rule"]
+    AG -.->|"baseline E2 only: no talking"| VOTE["weighted majority vote"]
+    VOTE -.-> ACC
     ADJ -->|confidence above threshold| ACC
     ADJ -->|confidence below threshold| H["human_review<br/>LangGraph interrupt()"]
     H --> ACC
     ACC --> E([END])
 ```
 
+Thick arrows show the proposed system, where agents talk. The dotted path is the voting-only baseline (E2), used for comparison.
+
 ### 3.2 Communication protocol
 
 Agents do **not** chat freely. They exchange **structured messages** on a shared blackboard (the LangGraph state). This keeps the process auditable and prevents the loudest agent from dominating.
 
 1. **Blind round (independence).** Each reviewer sees only the article and the codebook, never the other votes. This mirrors independent human review and keeps inter-agent agreement statistics meaningful.
-2. **Agreement check (code, not an LLM).** Unanimous → accept. Otherwise the configured split policy applies. For annotation, the check is **per field**, so only disputed dimensions are ever voted on or debated.
-3. **Majority vote (E2, the default).** Weighted by each reviewer's calibration-split accuracy. Prior work shows this is a strong, cheap baseline that debate often fails to beat [1][2].
-4. **Deliberation (E3+, max 2 rounds), designed against conformity [3]:**
+2. **Agreement check (code, not an LLM).** Unanimous → accept. Split → the agents talk it out. For annotation, the check is **per field**, so only disputed dimensions are debated.
+3. **Deliberation: the agents talk to each other (max 2 rounds).** This is the core of the proposed system. It is designed against conformity [3]:
    - Reviewers see the *arguments and evidence* on each side, anonymized, **but not the vote count**, so there is no visible majority to defer to.
    - The **minority reviewer argues first**, and the others must respond to its evidence.
    - **A revision must cite a new evidence span or codebook rule.** A change that cites nothing is rejected and the original vote stands.
    - Blind-round votes are **never overwritten**. Both are stored, so the effect of debate can be measured directly.
-5. **Adjudication.** If the vote is still split, the Adjudicator reads the transcript and produces a *weighting* of the reviewers' positions (not a free override), the codebook rule it relied on, and a confidence score [2].
-6. **Escalation.** Low-confidence adjudications, and anything the Verifier fails, go to a human queue. This is the human-in-the-loop protocol from the paper's recommendations.
+4. **Adjudication.** If the vote is still split, the Adjudicator reads the transcript and produces a *weighting* of the reviewers' positions (not a free override), the codebook rule it relied on, and a confidence score [2].
+5. **Escalation.** Low-confidence adjudications, and anything the Verifier fails, go to a human queue. This is the human-in-the-loop protocol from the paper's recommendations.
+
+**Voting baseline (E2, comparison only).** The same panel with deliberation switched off: split items are settled by majority vote, weighted by each reviewer's calibration-split accuracy. Prior work shows voting is a strong, cheap baseline [1][2], so the talking system has to beat it to justify its cost.
 
 ```mermaid
 sequenceDiagram
@@ -178,8 +180,8 @@ Reviewers should be of reasonably strong capability. Debate is bounded by the st
 
 ### 3.4 Screening vs annotation use different decision rules
 
-- **Screening (recall matters most).** Missing an eligible study is worse than reviewing an extra one. An article is auto-excluded **only if all reviewers exclude it**. Any split goes on to the split policy and never becomes a silent exclusion [4].
-- **Annotation (balanced accuracy).** The standard split policy applies per field.
+- **Screening (recall matters most).** Missing an eligible study is worse than reviewing an extra one. An article is auto-excluded **only if all reviewers exclude it**. Any split goes to deliberation and never becomes a silent exclusion [4].
+- **Annotation (balanced accuracy).** Deliberation runs per disputed field.
 
 ### 3.5 Panel size
 
@@ -282,14 +284,16 @@ class ArticleState(TypedDict):
 
 ### 7.2 Experimental conditions (ablation ladder)
 
-| ID | Condition | Answers the question |
-|---|---|---|
-| E0 | Prior 2-agent system (existing results) | baseline |
-| E1 | Single reviewer agent, new codebook | Does the codebook/prompting alone help? |
-| E2 | 3-agent heterogeneous panel, weighted majority vote, **no talking** | Value of redundancy. Prior work predicts this is a strong baseline [1][2]. |
-| E3 | E2 + anti-conformity deliberation on split items | Does talking add anything beyond voting on *nuanced ADRD annotation*? This is the key research question. |
-| E4 | E3 + Adjudicator | Value of a senior arbiter |
-| E5 | E4 + human review of escalations | Accuracy vs. human effort trade-off |
+**E5 is the proposed system.** E0–E4 are the comparisons that show what each part contributes.
+
+| ID | Condition | Role | Answers the question |
+|---|---|---|---|
+| E0 | Prior 2-agent system (existing results) | baseline | Where we started |
+| E1 | Single reviewer agent, new codebook | baseline | Does the codebook/prompting alone help? |
+| E2 | 3-agent heterogeneous panel, weighted majority vote, **no talking** | key baseline | Value of multiple agents without communication. Prior work predicts this is strong [1][2]. |
+| E3 | E2 + agents talk (anti-conformity deliberation on split items) | ablation | **Does agent communication beat voting on nuanced ADRD annotation?** This is the key research question. |
+| E4 | E3 + Adjudicator | ablation | Value of a senior arbiter |
+| **E5** | **E4 + human review of escalations** | **proposed system** | Final accuracy vs. human effort |
 
 Crossed factors: **heterogeneous vs single-model (persona-only) panel**, **panel size 3 / 5 / 7**, **abstract-only vs triage + full text**, **specialist-per-dimension vs generalist annotators**.
 
@@ -297,7 +301,8 @@ Prior work found debate did not beat voting on general tasks and on binary scree
 
 ```mermaid
 flowchart LR
-    E0["E0<br/>2-agent baseline"] --> E1["E1<br/>single agent"] --> E2["E2<br/>panel + vote"] --> E3["E3<br/>+ deliberation"] --> E4["E4<br/>+ adjudicator"] --> E5["E5<br/>+ human on escalations"]
+    E0["E0<br/>2-agent baseline"] --> E1["E1<br/>single agent"] --> E2["E2<br/>panel + vote<br/>(no talking)"] --> E3["E3<br/>+ agents talk"] --> E4["E4<br/>+ adjudicator"] --> E5["E5 PROPOSED<br/>+ human on escalations"]
+    style E5 stroke-width:3px
 ```
 
 ---
