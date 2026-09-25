@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Secrets
+.env
+
+# Data (unpublished gold standard, corpora, run outputs, LLM cache)
+data/**
+!data/.gitkeep
+*.sqlite
+*.db
+
+.DS_Store

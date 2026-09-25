@@ -1,0 +1,28 @@
+# Review codebook: the single source of truth shared by every agent.
+# Fill label sets and rules from the human review team's protocol so the agent
+# vocabulary matches the gold standard exactly. Bump `version` on every change.
+version: "0.0.1"
+
+screening:
+  inclusion:
+    # - id: I1
+    #   text: "<inclusion criterion from the human protocol>"
+  exclusion:
+    # - id: E1
+    #   text: "<exclusion criterion from the human protocol>"
+
+annotation:
+  dimensions:
+    screening_instrument_type:
+      multi_label: true
+      labels: []   # TODO: from human codebook
+      rules: []
+    target_population:
+      multi_label: true
+      labels: []   # TODO
+      rules: []
+    dataset_source:
+      multi_label: true
+      labels: []   # TODO
+      rules: []
+    # TODO: remaining dimensions used by the human reviewers
