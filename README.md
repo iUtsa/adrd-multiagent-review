@@ -4,9 +4,9 @@ A LangGraph multi-agent system that runs an automated scoping review of PubMed-i
 
 This project extends the earlier two-agent system (Extraction Agent + Annotation Agent, built on LangChain + Django REST). It adds:
 
-- a **blind panel of 3 reviewer agents** that mirrors the human review protocol,
-- **structured deliberation** in which agents exchange evidence and revise their votes,
-- an **Adjudicator** and a **human-in-the-loop** queue for borderline studies,
+- a **panel of 3 independent reviewer agents on different AI models**, mirroring the 3-reviewer human protocol,
+- an **Adjudicator** that weighs the reviewers' evidence when they disagree, and a **human-in-the-loop** queue for low-confidence cases,
+- an optional **debate variant**, tested against voting rather than assumed to help,
 - a **Verifier** that checks every label against verbatim evidence,
 - a **versioned codebook** with a Curator agent for iterative criteria refinement.
 
