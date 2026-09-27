@@ -206,6 +206,8 @@ Three reviewers mirror the three human reviewers and are the main condition. Pan
 
 ## 5. LangGraph implementation mapping
 
+**Stack:** LangGraph orchestrates all agents. LangChain is used only for the model connectors (`langchain-anthropic`, `langchain-google-genai`, `langchain-openai`), so every model shares one interface and models can be swapped in config. Django REST (reused from the prior system) provides the API and the human review UI.
+
 | Concept | LangGraph mechanism |
 |---|---|
 | Per-article pipeline | `StateGraph` compiled once, invoked per article. An outer async batch runner applies a concurrency limit. |
