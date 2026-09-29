@@ -10,7 +10,7 @@ This project extends the earlier two-agent system (Extraction Agent + Annotation
 - a **Verifier** that checks every label against verbatim evidence,
 - a **versioned codebook** with a Curator agent for iterative criteria refinement.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design, diagrams and evaluation plan.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design, diagrams and evaluation plan, and [docs/10_DAY_PLAN.md](docs/10_DAY_PLAN.md) for the build schedule.
 
 ## Status
 
