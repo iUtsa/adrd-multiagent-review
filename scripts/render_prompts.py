@@ -15,11 +15,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from adrd_review.agents import annotation, extraction, screening, triage  # noqa: E402
+from adrd_review.agents import adjudicator, annotation, curator, debate, extraction, screening, triage, verifier  # noqa: E402
 from adrd_review.agents.common import render_article, render_screening_rules  # noqa: E402
 from adrd_review.codebook import load_codebook  # noqa: E402
 from adrd_review.schemas import (  # noqa: E402
+    AdjudicationAnswer,
     AnnotationAnswer,
+    CuratorAnswer,
+    DebateAnswer,
+    Decision,
+    EvidenceSpan,
+    VerifierAnswer,
+    Vote,
     Article,
     ExtractionRecord,
     ExtractedField,
@@ -83,6 +90,52 @@ def main() -> int:
             annotation.system_prompt(cb),
             render_article(EXAMPLE) + annotation.render_extraction(extraction_example),
             AnnotationAnswer,
+        ),
+    }
+    votes = [
+        Vote(reviewer_id="A", model="example", field="screening", labels=["include"], rule_ids=["I1", "I2"],
+             evidence=[EvidenceSpan(quote="500 primary care patients aged 65+ completed the MMSE")],
+             rationale="MMSE evaluated against DSM-IV diagnosis in primary care.", confidence=0.8),
+        Vote(reviewer_id="B", model="example", field="screening", labels=["exclude"], rule_ids=["I3"],
+             evidence=[EvidenceSpan(quote="Sensitivity 0.85, specificity 0.90.")],
+             rationale="Design not reported; cannot confirm a cross-sectional sample.", confidence=0.6),
+        Vote(reviewer_id="C", model="example", field="screening", labels=["include"], rule_ids=["I1"],
+             evidence=[], rationale="Benefit of the doubt at abstract stage.", confidence=0.7),
+    ]
+    decision = Decision(field="screening", labels=["include"], method="adjudicator", confidence=0.8)
+    disagreement = [{
+        "pmid": "00000000", "title": EXAMPLE.title, "abstract": EXAMPLE.abstract, "field": "screening",
+        "gold": "exclude", "agent": "include", "rules": ["I4"],
+        "reasons": ["Primary care setting assumed to satisfy I4 for MMSE."],
+    }]
+    pages |= {
+        "adjudicator.md": (
+            "Adjudicator: exact prompt (screening decision)",
+            adjudicator.system_prompt(cb, "screening"),
+            adjudicator.user_prompt(EXAMPLE, votes),
+            AdjudicationAnswer,
+        ),
+        "verifier.md": (
+            "Verifier: exact prompt (model check)",
+            verifier.SYSTEM.format(rules=render_screening_rules(cb)),
+            verifier.user_prompt(EXAMPLE, [decision], votes),
+            VerifierAnswer,
+        ),
+        "debate.md": (
+            "Debate (variant D): exact prompt for reviewer B, round 1 (no persona)",
+            debate.system_prompt(cb, "screening"),
+            debate.user_prompt(EXAMPLE, votes[1], votes),
+            DebateAnswer,
+        ),
+        "curator.md": (
+            "Codebook Curator: exact prompt",
+            curator.SYSTEM.format(
+                version=cb.version,
+                rules=render_screening_rules(cb),
+                dimensions=__import__("adrd_review.agents.common", fromlist=["x"]).render_dimensions(cb),
+            ),
+            f"DISAGREEMENTS ({len(disagreement)})\n\n" + curator.render_disagreements(disagreement),
+            CuratorAnswer,
         ),
     }
     for fname, (title, system, user, schema) in pages.items():

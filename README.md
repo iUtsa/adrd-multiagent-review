@@ -14,7 +14,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design, diagrams a
 
 ## Status
 
-Building. Days 1–5 of the [10-day plan](docs/10_DAY_PLAN.md) are built: Python setup, PubMed tool, codebook, gold standard, frozen split, scorer, LangChain agents in a LangGraph pipeline, and the 3-reviewer panel (E1, E2). Models: **Gemini** (professor's licence), see [docs/MODELS.md](docs/MODELS.md). Real-model runs wait for the Gemini key/project. Next: adjudicator and verifier (Day 6). **The gold standard and codebook are currently a public placeholder** (Cochrane dementia-screening decisions from CLEF 2017) until the professor's data arrives; see [docs/GOLD_STANDARD.md](docs/GOLD_STANDARD.md). Progress log: [docs/PROGRESS.md](docs/PROGRESS.md).
+**All agents are built** (Days 1–8 of the [10-day plan](docs/10_DAY_PLAN.md)): PubMed tool, codebook, gold standard, frozen split, scorer, and every agent (triage, 3-reviewer panel, extraction, annotation, adjudicator, verifier, human review, Codebook Curator, debate) in one LangGraph pipeline covering E1–E4 and D. Everything runs today with a stand-in model. Models: **Gemini** (professor's licence), see [docs/MODELS.md](docs/MODELS.md). **Next: real Gemini runs** once access is set up ([docs/RUNNING_EXPERIMENTS.md](docs/RUNNING_EXPERIMENTS.md)). **The gold standard and codebook are currently a public placeholder** (Cochrane dementia-screening decisions from CLEF 2017) until the professor's data arrives; see [docs/GOLD_STANDARD.md](docs/GOLD_STANDARD.md). Progress log: [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Quick start
 
@@ -27,7 +27,7 @@ cp .env.example .env        # add API keys when available
 python scripts/build_placeholder_gold.py   # gold standard + 268 articles into data/
 python -m pytest                           # run the tests
 python scripts/score_baselines.py          # score the non-AI baselines
-python -m adrd_review.graph.runner configs/runs/E2_fake.yaml   # run the 3-reviewer pipeline (no key needed)
+python -m adrd_review.graph.runner configs/runs/E4_fake.yaml   # run the full proposed system (no key needed)
 ```
 
 ## Docs
@@ -39,6 +39,7 @@ python -m adrd_review.graph.runner configs/runs/E2_fake.yaml   # run the 3-revie
 | [docs/PROGRESS.md](docs/PROGRESS.md) | What has been built and how it was checked |
 | [docs/TOOLS.md](docs/TOOLS.md) | How to use each tool (PubMed, ...) |
 | [docs/GOLD_STANDARD.md](docs/GOLD_STANDARD.md) | Gold file format, the placeholder, the frozen split, how to swap in the real data |
+| [docs/RUNNING_EXPERIMENTS.md](docs/RUNNING_EXPERIMENTS.md) | **The order to run everything**, one command per step |
 | [docs/AGENTS.md](docs/AGENTS.md) | The agents, model factory, cache, pipeline, run configs and outputs |
 | [docs/agents/](docs/agents/README.md) | **Build document for every agent** + exact prompts |
 | [docs/MODELS.md](docs/MODELS.md) | Which Gemini model does what; Gemini access setup; optional Groq |
@@ -58,12 +59,15 @@ src/adrd_review/
   schemas.py              shared records: Article, answer forms, Vote, Decision, Usage
   llm.py                  model factory (LangChain) + response cache
   consensus.py            combine reviewers' votes; panel agreement
+  human_review.py         answer paused decisions and finish a run
+  curate.py               run the Codebook Curator on a calibration run
+  freeze.py               freeze configs before test runs
   fake_model.py           keyword stand-in model for runs without a key
   codebook.py             load + validate the codebook
   gold.py                 load + validate the gold standard
   split.py                make + freeze the calibration/test split
   tools/pubmed.py         PubMed search / fetch / lookup
-  agents/                 triage, screening, extraction, annotation (+ common prompt pieces)
+  agents/                 triage, screening, extraction, annotation, adjudicator, verifier, debate, human, curator
   graph/                  state.py, pipeline.py (LangGraph), runner.py
   eval/metrics.py         P/R/F1, Cohen & Fleiss kappa, WSS, WSS@95, cost
   eval/score.py           score a predictions file against the gold standard

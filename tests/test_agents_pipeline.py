@@ -196,12 +196,13 @@ def test_runner_collects_states_failures_and_predictions():
     graph = pipeline()
 
     class Boom:
-        def invoke(self, state):
+        def invoke(self, state, config=None):
             if state["article"].pmid == "2":
                 raise RuntimeError("provider down")
-            return graph.invoke(state)
+            return graph.invoke(state, config)
 
-    states, failures = run_articles(Boom(), [INCLUDE_ART, EXCLUDE_ART, NO_ABSTRACT], concurrency=2)
+    states, failures, paused = run_articles(Boom(), [INCLUDE_ART, EXCLUDE_ART, NO_ABSTRACT], concurrency=2)
+    assert paused == []
     assert [s["article"].pmid for s in states] == ["1", "3"]
     assert failures[0]["pmid"] == "2" and "provider down" in failures[0]["error"]
     pred = to_prediction(states[0])

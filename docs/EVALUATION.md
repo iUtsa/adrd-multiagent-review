@@ -56,6 +56,14 @@ Rules worth knowing:
 - Empty denominators give 0.0 (same convention as scikit-learn).
 - κ can be low even when accuracy is high, if one label dominates. Example below: MMSE.
 
+## What a pipeline run adds to the report
+
+Runs made with `adrd_review.graph.runner` also report, in `report.json` and on screen:
+- **Panel agreement:** Fleiss' κ among the reviewers' independent votes, per field, and how many articles were unanimous.
+- **How decisions were reached:** counts of `single`, `unanimous`, `majority`, `tie_include`, `adjudicator`, `human` per field.
+- **Escalations:** decisions sent to a human, by reason (`split_exclusion`, `low_confidence`, `verifier_fail`), the share of articles affected (human effort), and how many were answered.
+- **Debate (variant D):** articles debated, answer changes, rejected changes, and changes toward vs away from the gold answer.
+
 ## How we know the scorer is right
 
 `tests/test_metrics.py`:

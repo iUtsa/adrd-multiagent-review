@@ -146,3 +146,94 @@ class Usage(BaseModel):
     cost_usd: float | None = None
     seconds: float = 0.0
     cached: bool = False
+
+
+# --------------------------------------------------------------------------- #
+# Day 6-8 agents: answer forms
+# --------------------------------------------------------------------------- #
+
+
+class ReviewerWeight(BaseModel):
+    reviewer: str = Field(description="Reviewer ID exactly as given, e.g. 'A'.")
+    weight: float = Field(ge=0, le=1, description="How well the text and rules support this reviewer's position, 0-1.")
+    reason: str = Field(default="", description="One sentence.")
+
+
+class AdjudicationAnswer(BaseModel):
+    labels: list[str] = Field(
+        description="Your answer: for screening ['include'] or ['exclude']; for a dimension, the label IDs (empty if none)."
+    )
+    reviewer_weights: list[ReviewerWeight] = Field(description="One entry per reviewer.")
+    rule_ids: list[str] = Field(default_factory=list, description="Codebook rule IDs your answer rests on.")
+    rationale: str = Field(description="At most four sentences: which evidence settles the disagreement and why.")
+    confidence: float = Field(ge=0, le=1, description="How sure you are, 0-1. Be honest: low when the text is ambiguous.")
+
+
+class DebateAnswer(BaseModel):
+    labels: list[str] = Field(
+        description="Your answer after reading the arguments: ['include']/['exclude'] for screening, or label IDs."
+    )
+    new_evidence: list[EvidenceSpan] = Field(
+        default_factory=list,
+        description="Quotes you did NOT cite before. Required if you change your answer; a change without new evidence is not accepted.",
+    )
+    rule_ids: list[str] = Field(default_factory=list, description="Codebook rule IDs your answer rests on.")
+    rationale: str = Field(description="At most three sentences, answering the strongest opposing argument.")
+    confidence: float = Field(ge=0, le=1, description="How sure you are, 0-1.")
+
+
+class VerifierCheck(BaseModel):
+    field: str = Field(description="'screening' or the dimension name, exactly as given.")
+    supported: bool = Field(description="True if the quoted evidence and cited rules actually support this decision.")
+    problem: str = Field(default="", description="If not supported: one sentence on what is wrong.")
+
+
+class VerifierAnswer(BaseModel):
+    checks: list[VerifierCheck] = Field(description="One check per decision listed.")
+
+
+class CodebookProposal(BaseModel):
+    target: str = Field(description="Rule ID (e.g. 'I4') or 'dimension:label' (e.g. 'setting:primary_care') or 'new'.")
+    problem: str = Field(description="What in the current wording caused disagreements, with reference to the examples.")
+    suggested_text: str = Field(description="Proposed clearer wording or a borderline example to add.")
+    example_pmids: list[str] = Field(default_factory=list, description="PMIDs of the disagreements this addresses.")
+
+
+class CuratorAnswer(BaseModel):
+    proposals: list[CodebookProposal] = Field(description="3-8 proposals, most useful first.")
+
+
+# --------------------------------------------------------------------------- #
+# Day 6-8 pipeline records
+# --------------------------------------------------------------------------- #
+
+EscalationReason = Literal["split_exclusion", "low_confidence", "verifier_fail"]
+
+
+class Escalation(BaseModel):
+    """A decision sent to a human."""
+
+    field: str
+    reason: EscalationReason
+    detail: str = ""
+
+
+class Adjudication(BaseModel):
+    field: str
+    model: str
+    labels: list[str]  # the adjudicator's own answer
+    reviewer_weights: dict[str, float]
+    rule_ids: list[str] = Field(default_factory=list)
+    rationale: str = ""
+    confidence: float
+    warnings: list[str] = Field(default_factory=list)
+
+
+class VerificationReport(BaseModel):
+    quote_problems: list[str] = Field(default_factory=list)  # deterministic check
+    checks: list[VerifierCheck] = Field(default_factory=list)  # model check (empty if no verifier model)
+    model: str | None = None
+
+    @property
+    def failed_fields(self) -> list[str]:
+        return [c.field for c in self.checks if not c.supported]

@@ -99,9 +99,9 @@ Fake run, 40 calibration articles: reviewers disagreed on 20 of 40 articles (scr
 ## 12. Limitations and planned changes
 
 - Weights are all 1 until real calibration runs exist.
-- Day 6: split votes go to the adjudicator instead of a plain majority, and a split-vote exclusion goes to a human.
+- From E3, split votes go to the [adjudicator](adjudicator.md); a split-vote exclusion is escalated to a human in every condition (answered in E4, see [human-review.md](human-review.md)).
 - Panel size (3/5/7) is an experiment factor; the code already accepts any size.
 
 ## 13. Change log
 
-- 2026-09-30: built (Day 5).
+- 2026-09-30: built (Day 5). Day 6-8: consensus uses each reviewer's latest vote (debate rounds); adjudicator, verifier, human review and debate plug in after it.

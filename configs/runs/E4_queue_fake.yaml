@@ -1,0 +1,39 @@
+# E4 with a REAL pause: escalated decisions wait for a person. Answer with:
+#   python -m adrd_review.human_review data/runs/E4_queue_fake/<timestamp>
+# E4_fake: E3 + human review of escalated decisions. `human: queue` = the gold label stands in for the person (simulated upper bound); the escalation count measures human effort.
+# Keyword stand-in models: runs without any key; scores are NOT results.
+#   python -m adrd_review.graph.runner configs/runs/E4_fake.yaml
+name: E4_queue_fake
+condition: E4
+description: E3 + human review of escalated decisions
+part: calibration
+concurrency: 8
+
+roles:
+  triage:     {model: {provider: fake, model: keyword-rules}}
+  extraction: {model: {provider: fake, model: keyword-rules}}
+
+panel:
+  - id: A
+    persona: &clinical >-
+      a clinical neurologist who diagnoses dementia. You pay closest attention to whether the target
+      condition, the test being evaluated and the reference-standard diagnosis are clinically sound.
+    model: {provider: fake, model: keyword-rules}
+  - id: B
+    persona: &epi >-
+      an epidemiologist. You pay closest attention to who was studied, where they were recruited,
+      and whether the sample and setting match what the review asks for.
+    model: {provider: fake, model: keyword-strict}
+  - id: C
+    persona: &methods >-
+      a research methodologist. You pay closest attention to study design, data sources, and whether
+      diagnostic accuracy can actually be assessed from the study.
+    model: {provider: fake, model: keyword-lenient}
+
+# ---- added for E4 ----
+adjudicator: {provider: fake, model: keyword-rules}
+escalate_below: 0.6
+verifier:
+  enabled: true
+  model: {provider: fake, model: keyword-rules}
+human: queue

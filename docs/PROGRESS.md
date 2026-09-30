@@ -4,6 +4,33 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-09-30 — Days 6–8: every remaining agent built
+
+All planned agents now exist; each has a build document in [agents/](agents/README.md) and a generated exact prompt.
+
+| Task | Status |
+|---|---|
+| 6.1 Adjudicator | ✅ [agents/adjudicator.md](agents/adjudicator.md): weighs reviewers (0–1) instead of overriding; self-contradiction → human |
+| 6.2 Screening safety rule | ✅ split-vote exclusion always escalated ([agents/human-review.md](agents/human-review.md)) |
+| 6.3 Verifier | ✅ [agents/verifier.md](agents/verifier.md): quote check (no model) + optional model check |
+| 6.4 E3 on calibration | ⏳ fake run done; real run needs Gemini access |
+| 7.1 Human review with interrupt() + SQLite checkpoint + review screen | ✅ `human: queue` + `python -m adrd_review.human_review` |
+| 7.2 Gold answers stand in for the human; escalations counted | ✅ `human: gold` |
+| 7.3 Codebook Curator | ✅ [agents/codebook-curator.md](agents/codebook-curator.md): calibration runs only; proposals for the professor |
+| 7.4 Re-run with codebook v2 | ⏳ needs real runs + professor |
+| 8.1 Debate (variant D) | ✅ [agents/debate.md](agents/debate.md): hidden counts, minority first, change needs new evidence |
+| 8.2 Keep/drop D | ⏳ needs real calibration runs |
+| 8.3 Freeze | ✅ tool built (`python -m adrd_review.freeze`); runner refuses unfrozen test runs. Freezing itself happens after calibration. |
+| 8.4 Cost estimate | ⏳ needs real token counts |
+
+- One graph serves every condition; configs `E3_*`, `E4_*`, `E4_queue_fake`, `D_*` added. Protocol: [RUNNING_EXPERIMENTS.md](RUNNING_EXPERIMENTS.md).
+- **Bug found and fixed in testing:** the verifier matched votes by reviewer only, so annotation votes hid screening votes and every included article was flagged (23/23). Now matched by reviewer and field; regression test added. After the fix: 0 verifier false alarms.
+- LangGraph checkpoints: our record types registered for strict deserialization (checked with `LANGGRAPH_STRICT_MSGPACK=true`).
+- Fake runs (calibration, 40): E3 20 adjudications, 12 escalations (30%, all split exclusions); E4 (gold human) answered 12, recall 0.769 → 0.846; D debated 20 articles; queue mode paused 3 of 12, answered via the review command, finished. Curator: 26 disagreements → proposals file. Test-set runs refused without a freeze.
+- **Tests: 88 pass** (+1 live PubMed test, opt-in).
+
+---
+
 ## 2026-09-30 — Gemini plan, professor's search, agent docs, Day 5 panel
 
 **Model plan changed to Gemini** (professor provided a Gemini licence): [MODELS.md](MODELS.md).

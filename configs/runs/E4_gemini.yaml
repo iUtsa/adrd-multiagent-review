@@ -1,0 +1,37 @@
+# E4_gemini: E3 + human review of escalated decisions. `human: gold` = the gold label stands in for the person (simulated upper bound); the escalation count measures human effort.
+# Gemini models; needs Gemini access (see docs/MODELS.md).
+#   python -m adrd_review.graph.runner configs/runs/E4_gemini.yaml
+name: E4_gemini
+condition: E4
+description: E3 + human review of escalated decisions
+part: calibration
+concurrency: 2
+
+roles:
+  triage:     {model: {provider: google, model: gemini-3.5-flash-lite, max_tokens: 1024, requests_per_minute: 10}}
+  extraction: {model: {provider: google, model: gemini-3.8-flash, requests_per_minute: 10}}
+
+panel:
+  - id: A
+    persona: >-
+      a clinical neurologist who diagnoses dementia. You pay closest attention to whether the target
+      condition, the test being evaluated and the reference-standard diagnosis are clinically sound.
+    model: {provider: google, model: gemini-3.8-flash, requests_per_minute: 10}
+  - id: B
+    persona: >-
+      an epidemiologist. You pay closest attention to who was studied, where they were recruited,
+      and whether the sample and setting match what the review asks for.
+    model: {provider: google, model: gemini-3.7-flash, requests_per_minute: 10}
+  - id: C
+    persona: >-
+      a research methodologist. You pay closest attention to study design, data sources, and whether
+      diagnostic accuracy can actually be assessed from the study.
+    model: {provider: google, model: gemini-3.5-flash, requests_per_minute: 10}
+
+# ---- added for E4 ----
+adjudicator: {provider: google, model: gemini-3.1-pro-preview, max_tokens: 2048, requests_per_minute: 5}
+escalate_below: 0.6
+verifier:
+  enabled: true
+  model: {provider: google, model: gemini-3.5-flash-lite, max_tokens: 1024, requests_per_minute: 10}
+human: gold

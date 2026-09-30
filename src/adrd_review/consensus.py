@@ -15,6 +15,19 @@ from adrd_review.eval.metrics import fleiss_kappa
 from adrd_review.schemas import Decision, Vote
 
 
+def latest_votes(votes: list[Vote], field: str | None = None) -> list[Vote]:
+    """Each reviewer's most recent vote (highest debate round), optionally for one field."""
+    latest: dict[str, Vote] = {}
+    for v in sorted(votes, key=lambda v: v.round):
+        if field is None or v.field == field:
+            latest[v.reviewer_id] = v
+    return [latest[r] for r in sorted(latest)]
+
+
+def is_split(votes: list[Vote]) -> bool:
+    return len({tuple(sorted(v.labels)) for v in votes}) > 1
+
+
 def _weight(v: Vote, weights: dict[str, float]) -> float:
     return weights.get(v.reviewer_id, 1.0)
 

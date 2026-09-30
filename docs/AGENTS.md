@@ -1,6 +1,6 @@
 # Agents and the pipeline
 
-How the agents are built (LangChain), wired together (LangGraph), and run. Built so far: **E1** (one reviewer) and **E2** (3-reviewer panel + weighted majority vote). Days 6–8 add the adjudicator, verifier, human review and debate test on top of the same pieces.
+How the agents are built (LangChain), wired together (LangGraph), and run. **All conditions are built:** E1 (one reviewer), E2 (3-reviewer panel + vote), E3 (+ adjudicator + verifier), E4 (+ human review, the proposed system) and D (+ debate). How to run them in order: [RUNNING_EXPERIMENTS.md](RUNNING_EXPERIMENTS.md).
 
 **Detailed build documentation for each agent is in [docs/agents/](agents/README.md)**, with the exact prompts generated from the live code. Model choices: [MODELS.md](MODELS.md).
 
@@ -10,9 +10,17 @@ How the agents are built (LangChain), wired together (LangGraph), and run. Built
 
 ```
 START -> triage -> [screen_reviewer x N] -> screen_consensus
-      --include--> extract -> [annotate_reviewer x N] -> annotate_consensus -> END
-      --exclude--> END
+   -> (split, debate rounds left) screen_debate -> screen_consensus ...
+   -> (split, adjudicator) screen_adjudicate
+   -> screen_checks (safety rule) -> (escalated, human on) screen_human
+   --include--> extract -> [annotate_reviewer x N] -> annotate_consensus
+          -> (split, rounds left) annotate_debate -> annotate_consensus ...
+          -> (split, adjudicator) annotate_adjudicate
+   -> finalize (verifier) -> (escalated, human on) final_human -> END
+   --exclude--> finalize -> ...
 ```
+
+One graph serves every condition; the run config switches steps on (`panel`, `adjudicator`, `verifier`, `debate_rounds`, `human`).
 
 Code: `src/adrd_review/graph/pipeline.py`. The N reviewers run in parallel (LangGraph `Send`) and never see each other's votes. E1 is N = 1; E2 is N = 3. Excluded articles stop after screening. How votes are combined: [agents/reviewer-panel.md](agents/reviewer-panel.md).
 
@@ -83,6 +91,12 @@ Panel runs keep `roles.triage` and `roles.extraction` and list the reviewers und
 | `E1_gemini.yaml` | Gemini access | first real E1 run |
 | `E2_fake.yaml` | nothing | 3-reviewer panel, plumbing check |
 | `E2_gemini.yaml` | Gemini access | 3 Gemini versions × 3 perspectives |
+| `E3_fake.yaml` / `E3_gemini.yaml` | nothing / Gemini | + adjudicator (Gemini Pro) + verifier |
+| `E4_fake.yaml` / `E4_gemini.yaml` | nothing / Gemini | + human review (gold answers stand in for the person) |
+| `E4_queue_fake.yaml` | nothing | + human review that really pauses for a person |
+| `D_fake.yaml` / `D_gemini.yaml` | nothing / Gemini | E3 + 2 debate rounds |
+
+Extra config keys: `adjudicator:` (model), `escalate_below:` (default 0.6), `verifier: {enabled, model}`, `debate_rounds:`, `human: none | gold | queue`.
 
 ## Running
 
@@ -101,7 +115,9 @@ Each run writes `data/runs/<name>/<timestamp>/`:
 | `decisions.jsonl` | Everything per article: triage, every vote with quotes, rule IDs, rationale, confidence, warnings; extraction |
 | `usage.jsonl` | One line per model call: role, model, tokens, cost, seconds, cached |
 | `failures.json` | Articles that errored, with the error |
-| `report.json` | Scores, cost/time summary, failure and warning counts, panel agreement (Fleiss' κ among reviewers), how each decision was reached |
+| `report.json` | Scores, cost/time summary, failure and warning counts, panel agreement (Fleiss' κ among reviewers), how each decision was reached, escalations, adjudications, debate statistics |
+| `checkpoints.sqlite` | `human: queue` only: saved state of paused articles |
+| `curator_proposals.md/.json` | After running the Curator on a calibration run |
 | `run_meta.json` | Config, codebook version + hash, gold hash, split file, git commit, timings |
 
 **Failed articles are predicted `include`** (score 0.5) so a crash can never silently drop a study; they are listed in `failures.json` and counted in the report.
