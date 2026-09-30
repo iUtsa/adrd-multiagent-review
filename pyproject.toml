@@ -26,6 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+local = ["langchain-ollama"]  # free local models via Ollama (see docs/LOCAL_MODELS.md)
 
 [build-system]
 requires = ["setuptools>=68"]

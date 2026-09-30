@@ -14,18 +14,18 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design, diagrams a
 
 ## Status
 
-Building (Day 2 of the [10-day plan](docs/10_DAY_PLAN.md)). The human review is complete. Done so far: Python setup and the PubMed tool. See [docs/PROGRESS.md](docs/PROGRESS.md).
+Building. Days 1–2 of the [10-day plan](docs/10_DAY_PLAN.md) are done: Python setup, PubMed tool, codebook, gold standard and frozen split. **The gold standard and codebook are currently a public placeholder** (Cochrane dementia-screening decisions from CLEF 2017) until the professor's data arrives; see [docs/GOLD_STANDARD.md](docs/GOLD_STANDARD.md). Progress log: [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Quick start
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,local]"
 cp .env.example .env        # add API keys when available
 
-python -m pytest            # run the tests
-python -m adrd_review.tools.pubmed fetch --pmids 41503471   # download an article
+python scripts/build_placeholder_gold.py   # gold standard + 268 articles into data/
+python -m pytest                           # run the tests
 ```
 
 ## Docs
@@ -36,18 +36,26 @@ python -m adrd_review.tools.pubmed fetch --pmids 41503471   # download an articl
 | [docs/10_DAY_PLAN.md](docs/10_DAY_PLAN.md) | Day-by-day build schedule |
 | [docs/PROGRESS.md](docs/PROGRESS.md) | What has been built and how it was checked |
 | [docs/TOOLS.md](docs/TOOLS.md) | How to use each tool (PubMed, ...) |
+| [docs/GOLD_STANDARD.md](docs/GOLD_STANDARD.md) | Gold file format, the placeholder, the frozen split, how to swap in the real data |
+| [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md) | Free local models with Ollama |
 
 ## Layout
 
 ```
-configs/                  codebook + panel configuration
+configs/
+  codebook.yaml           review rules and labels (placeholder)
+  splits/                 frozen calibration/test splits
 src/adrd_review/
   schemas.py              shared records (Article, ...)
+  codebook.py             load + validate the codebook
+  gold.py                 load + validate the gold standard
+  split.py                make + freeze the calibration/test split
   tools/pubmed.py         PubMed search / fetch / lookup
   agents/                 one module per agent
   graph/                  LangGraph state, subgraphs, pipeline
   eval/                   metrics and reports
 data/                     gold standard, corpus, run outputs (git-ignored)
+scripts/                  build_placeholder_gold.py, check_ollama.py
 notebooks/                analysis
 tests/                    pytest tests (+ fixtures/)
 docs/                     design, plan, progress, tool docs

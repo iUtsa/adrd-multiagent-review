@@ -1,28 +1,121 @@
 # Review codebook: the single source of truth shared by every agent.
-# Fill label sets and rules from the human review team's protocol so the agent
-# vocabulary matches the gold standard exactly. Bump `version` on every change.
-version: "0.0.1"
+#
+# PLACEHOLDER VERSION. Built from the published selection criteria of six Cochrane
+# diagnostic-accuracy reviews of dementia screening instruments (the CLEF 2017 TAR
+# dataset), so the pipeline can be built and tested before the professor's codebook
+# arrives. Replace this file with the human team's codebook; keep the same structure.
+# Bump `version` on every change.
+
+version: "0.1.0-placeholder"
+status: placeholder
+
+question: >
+  Studies that evaluate how accurately a brief cognitive or informant-based screening
+  instrument (MMSE, MoCA, Mini-Cog or IQCODE) detects dementia, compared against a
+  clinical reference-standard diagnosis.
+
+sources:
+  CD010775: "Montreal Cognitive Assessment for the diagnosis of Alzheimer's disease and other dementias. Cochrane 2015. PMID 26513331"
+  CD010783: "MMSE for the detection of Alzheimer's disease and other dementias in people with MCI. Cochrane 2015. PMID 25740785"
+  CD011145: "MMSE for the detection of dementia in clinically unevaluated people aged 65+ in community and primary care. Cochrane 2016. PMID 26760674"
+  CD010860: "Mini-Cog for the detection of dementia within a community setting. Cochrane 2021. PMID 34259337"
+  CD010771: "IQCODE for the detection of dementia within a general practice (primary care) setting. Cochrane 2021. PMID 34278564"
+  CD010772: "IQCODE for the detection of dementia within a secondary care setting. Cochrane 2021. PMID 34278561"
 
 screening:
+  decision_rule: >
+    Include only if ALL inclusion rules (I1-I4) are met and NO exclusion rule applies.
+    At title/abstract stage, include when the abstract does not give enough information
+    to rule a criterion out (benefit of the doubt).
   inclusion:
-    # - id: I1
-    #   text: "<inclusion criterion from the human protocol>"
+    - id: I1
+      name: Index test
+      text: >
+        The study evaluates at least one of these instruments as a test for dementia:
+        MMSE (11-item, maximum score 30), MoCA, Mini-Cog, or IQCODE (any version).
+      source: [CD010775, CD010783, CD011145, CD010860, CD010771, CD010772]
+      examples: []   # borderline examples are added during calibration (Day 7)
+
+    - id: I2
+      name: Target condition and reference standard
+      text: >
+        Dementia (all-cause, or a subtype: Alzheimer's disease dementia, Lewy body,
+        vascular or frontotemporal dementia) is confirmed with a clinical reference
+        standard using accepted criteria, e.g. DSM, ICD, NINCDS-ADRDA, Clinical Dementia
+        Rating, or a clinical assessment.
+      source: [CD011145, CD010783, CD010860, CD010771, CD010772]
+      examples: []
+
+    - id: I3
+      name: Study design
+      text: >
+        A diagnostic-accuracy design: cross-sectional, with all participants recruited
+        from the same sample; OR longitudinal, where people with mild cognitive impairment
+        (MCI) at baseline are followed up for conversion to dementia (MMSE only).
+      source: [CD010775, CD010860, CD010783]
+      examples: []
+
+    - id: I4
+      name: Setting matches the instrument
+      text: >
+        MMSE: people aged 65+ in community or primary care without prior dementia testing,
+        or people with MCI (Petersen, revised Petersen or Matthews criteria, or CDR 0.5).
+        MoCA: memory clinics, hospital clinics, primary care or community populations.
+        Mini-Cog: community samples drawn from the general population only (not primary
+        or secondary care).
+        IQCODE: primary care (unselected patients at initial, non-specialist assessment)
+        or secondary care (hospital patients, specialist geriatric or memory services).
+      source: [CD011145, CD010783, CD010775, CD010860, CD010771, CD010772]
+      examples: []
+
   exclusion:
-    # - id: E1
-    #   text: "<exclusion criterion from the human protocol>"
+    - id: E1
+      name: Case-control design
+      text: Participants were selected by known diagnosis (case-control), which carries a high risk of bias.
+      source: [CD010775]
+      examples: []
+
+    - id: E2
+      name: Special populations
+      text: >
+        Studies of early-onset dementia or dementia from a secondary cause, or samples
+        selected for a specific disease such as Parkinson's disease.
+      source: [CD010775]
+      examples: []
+
+    - id: E3
+      name: Special residential settings
+      text: Samples selected from specific settings such as nursing homes.
+      source: [CD010775]
+      examples: []
 
 annotation:
+  # Applies to included studies only. Labels are the exact values used in the gold file.
   dimensions:
-    screening_instrument_type:
+    instrument:
       multi_label: true
-      labels: []   # TODO: from human codebook
-      rules: []
-    target_population:
+      question: Which of the listed screening instruments does the study evaluate?
+      labels:
+        - id: MMSE
+          definition: Mini-Mental State Examination (11-item, max score 30)
+        - id: MoCA
+          definition: Montreal Cognitive Assessment
+        - id: Mini-Cog
+          definition: Mini-Cog (3-word recall + clock drawing)
+        - id: IQCODE
+          definition: Informant Questionnaire on Cognitive Decline in the Elderly (any version)
+
+    setting:
       multi_label: true
-      labels: []   # TODO
-      rules: []
-    dataset_source:
-      multi_label: true
-      labels: []   # TODO
-      rules: []
-    # TODO: remaining dimensions used by the human reviewers
+      question: In which setting or population was the instrument evaluated?
+      labels:
+        - id: community
+          definition: Participants sampled from the general population
+        - id: primary_care
+          definition: Unselected patients at initial, non-specialist (general practice) assessment
+        - id: community_or_primary_care
+          definition: Community or primary care, people aged 65+ without prior dementia testing
+        - id: secondary_care
+          definition: Hospital patients, or specialist geriatric / memory services
+        - id: mci_cohort
+          definition: People diagnosed with mild cognitive impairment, followed over time
