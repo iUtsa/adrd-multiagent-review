@@ -32,6 +32,13 @@ SETTINGS = {
     "community": r"community|population[- ]based|general population",
 }
 DEMENTIA = r"dementia|alzheimer"
+ACCURACY = r"sensitivity|specificity|accuracy|\bROC\b|\bAUC\b|cut[- ]?off|predictive value"
+
+# Styles let the fake panel disagree, to exercise the consensus step:
+#   keyword-rules    include if an instrument AND dementia are named (same as the keyword baseline)
+#   keyword-strict   ... AND an accuracy term (sensitivity, AUC, cut-off, ...)
+#   keyword-lenient  include if any instrument is named
+STYLES = ("keyword-rules", "keyword-strict", "keyword-lenient")
 
 
 def _article_text(user: str) -> str:
@@ -47,7 +54,9 @@ def _sentence_with(text: str, pattern: str) -> str | None:
     return None
 
 
-def default_responders(codebook=None) -> dict:
+def default_responders(codebook=None, style: str = "keyword-rules") -> dict:
+    if style not in STYLES:
+        raise ValueError(f"Unknown fake model style {style!r}; use one of {STYLES}")
     dims = list(codebook.dimensions) if codebook is not None else ["instrument", "setting"]
 
     def triage(_schema, _system, user):
@@ -63,6 +72,10 @@ def default_responders(codebook=None) -> dict:
         found = [k for k, p in INSTRUMENTS.items() if re.search(p, text, re.I)]
         dementia = bool(re.search(DEMENTIA, text, re.I))
         include = bool(found) and dementia
+        if style == "keyword-strict":
+            include = include and bool(re.search(ACCURACY, text, re.I))
+        elif style == "keyword-lenient":
+            include = bool(found)
         quotes = [q for q in {_sentence_with(text, INSTRUMENTS[k]) for k in found} if q][:2]
         return ScreeningAnswer(
             decision="include" if include else "exclude",

@@ -186,6 +186,8 @@ Three reviewers mirror the three human reviewers and are the main condition. Pan
 
 ## 4. Agent roster
 
+> **Update 2026-09-30:** the professor provided a Gemini licence, so all roles run on Gemini models (three Gemini versions × three perspectives for the panel; Gemini Pro as adjudicator). A free Groq reviewer is an optional experiment. Current assignments: [MODELS.md](MODELS.md). Per-agent build documents: [agents/](agents/README.md).
+
 8 agent roles; with 3-reviewer panels, about 12 agent instances work on each article.
 
 | Agent | Role | Input → Output | Tools | Model tier |

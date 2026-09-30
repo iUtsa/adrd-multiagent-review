@@ -9,7 +9,7 @@ from adrd_review.agents import annotation, screening
 from adrd_review.agents.common import check_quotes, render_article, render_screening_rules
 from adrd_review.codebook import load_codebook
 from adrd_review.fake_model import default_responders
-from adrd_review.graph.pipeline import build_pipeline
+from adrd_review.graph.pipeline import Reviewer, build_pipeline
 from adrd_review.graph.runner import load_run_config, run_articles, to_prediction
 from adrd_review.llm import FakeLLM, LangChainLLM, LLMError, ModelConfig, ResponseCache
 from adrd_review.schemas import (
@@ -163,29 +163,33 @@ def test_parse_failure_is_retried_then_gives_up(tmp_path):
 
 def pipeline():
     llm = fake_llm()
-    return build_pipeline({r: llm for r in ("triage", "screening", "extraction", "annotation")}, CODEBOOK)
+    return build_pipeline(CODEBOOK, llm, llm, [Reviewer(id="A", llm=llm, annotation_llm=llm)])
 
 
 def test_included_article_goes_through_all_four_steps():
     state = pipeline().invoke({"article": INCLUDE_ART})
     assert state["triage"].enough_information
     assert state["screening_decision"].labels == ["include"]
+    assert state["screening_decision"].method == "single"
     assert "MMSE" in [f.value for f in state["extraction"].instruments]
     assert state["annotation_decisions"]["instrument"].labels == ["MMSE"]
     assert state["annotation_decisions"]["setting"].labels == ["primary_care"]
-    assert [u.role for u in state["usage"]] == ["triage", "screening", "extraction", "annotation"]
+    assert sorted(u.role for u in state["usage"]) == ["annotation", "extraction", "screening", "triage"]
 
 
 def test_excluded_article_stops_after_screening():
     state = pipeline().invoke({"article": EXCLUDE_ART})
     assert state["screening_decision"].labels == ["exclude"]
     assert "extraction" not in state and "annotation_decisions" not in state
-    assert [u.role for u in state["usage"]] == ["triage", "screening"]
+    assert sorted(u.role for u in state["usage"]) == ["screening", "triage"]
 
 
-def test_missing_role_is_an_error():
-    with pytest.raises(ValueError, match="annotation"):
-        build_pipeline({"triage": fake_llm(), "screening": fake_llm(), "extraction": fake_llm()}, CODEBOOK)
+def test_panel_needs_unique_reviewers():
+    llm = fake_llm()
+    with pytest.raises(ValueError, match="At least one reviewer"):
+        build_pipeline(CODEBOOK, llm, llm, [])
+    with pytest.raises(ValueError, match="unique"):
+        build_pipeline(CODEBOOK, llm, llm, [Reviewer("A", llm, llm), Reviewer("A", llm, llm)])
 
 
 def test_runner_collects_states_failures_and_predictions():
@@ -209,4 +213,11 @@ def test_run_configs_parse():
     for name in ("E1_fake", "E1_gemini"):
         cfg = load_run_config(ROOT / f"configs/runs/{name}.yaml")
         assert set(cfg.roles) == {"triage", "screening", "extraction", "annotation"}
+        assert [r.id for r in cfg.reviewer_configs()] == ["A"]  # E1 = panel of one
     assert load_run_config(ROOT / "configs/runs/E1_gemini.yaml").roles["screening"].model.provider == "google"
+    for name in ("E2_fake", "E2_gemini"):
+        cfg = load_run_config(ROOT / f"configs/runs/{name}.yaml")
+        reviewers = cfg.reviewer_configs()
+        assert [r.id for r in reviewers] == ["A", "B", "C"] and all(r.persona for r in reviewers)
+    gem = load_run_config(ROOT / "configs/runs/E2_gemini.yaml").reviewer_configs()
+    assert len({r.model.model for r in gem}) == 3  # three different Gemini versions

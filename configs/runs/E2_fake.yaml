@@ -1,0 +1,29 @@
+# E2 panel with the FAKE keyword model: three reviewers with different keyword
+# styles, so they sometimes disagree and the consensus step is exercised.
+# Runs without any API key. Its scores are NOT results.
+name: E2_fake
+condition: E2
+description: 3-reviewer panel + weighted majority vote, keyword stand-in models (plumbing check)
+part: calibration
+concurrency: 8
+
+roles:
+  triage:     {model: {provider: fake, model: keyword-rules}}
+  extraction: {model: {provider: fake, model: keyword-rules}}
+
+panel:
+  - id: A
+    persona: &clinical >-
+      a clinical neurologist who diagnoses dementia. You pay closest attention to whether the target
+      condition, the test being evaluated and the reference-standard diagnosis are clinically sound.
+    model: {provider: fake, model: keyword-rules}
+  - id: B
+    persona: &epi >-
+      an epidemiologist. You pay closest attention to who was studied, where they were recruited,
+      and whether the sample and setting match what the review asks for.
+    model: {provider: fake, model: keyword-strict}
+  - id: C
+    persona: &methods >-
+      a research methodologist. You pay closest attention to study design, data sources, and whether
+      diagnostic accuracy can actually be assessed from the study.
+    model: {provider: fake, model: keyword-lenient}

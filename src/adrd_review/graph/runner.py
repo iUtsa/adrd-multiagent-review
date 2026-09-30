@@ -31,8 +31,9 @@ from adrd_review.codebook import Codebook, load_codebook
 from adrd_review.eval.metrics import usage_summary
 from adrd_review.eval.score import evaluate, format_report
 from adrd_review.gold import GoldRecord, file_sha256, load_gold, write_gold
-from adrd_review.graph.pipeline import ROLES, build_pipeline
-from adrd_review.llm import ModelConfig, build_llm
+from adrd_review.consensus import panel_agreement
+from adrd_review.graph.pipeline import Reviewer, build_pipeline
+from adrd_review.llm import LLM, ModelConfig, build_llm
 from adrd_review.schemas import Article
 from adrd_review.split import load_split
 from adrd_review.tools.pubmed import fetch_articles
@@ -41,6 +42,14 @@ from adrd_review.tools.pubmed import fetch_articles
 class RoleConfig(BaseModel):
     model: ModelConfig
     persona: str | None = None
+
+
+class ReviewerConfig(BaseModel):
+    id: str
+    model: ModelConfig
+    annotation_model: ModelConfig | None = None  # defaults to `model`
+    persona: str | None = None
+    weight: float = 1.0
 
 
 class RunConfig(BaseModel):
@@ -54,7 +63,19 @@ class RunConfig(BaseModel):
     concurrency: int = 4
     cache_dir: str = "data/cache/llm"
     corpus_dir: str = "data/corpus"
+    # triage and extraction always come from `roles`. Reviewers come from `panel`;
+    # without a panel, roles.screening + roles.annotation form a panel of one (E1).
     roles: dict[str, RoleConfig] = Field(default_factory=dict)
+    panel: list[ReviewerConfig] = Field(default_factory=list)
+
+    def reviewer_configs(self) -> list[ReviewerConfig]:
+        if self.panel:
+            return self.panel
+        missing = [r for r in ("screening", "annotation") if r not in self.roles]
+        if missing:
+            raise ValueError(f"Config has no panel and no roles for {missing}")
+        s, a = self.roles["screening"], self.roles["annotation"]
+        return [ReviewerConfig(id="A", model=s.model, annotation_model=a.model, persona=s.persona)]
 
 
 def load_run_config(path: str | Path) -> RunConfig:
@@ -65,7 +86,11 @@ def to_prediction(state: dict) -> GoldRecord:
     """Turn a finished graph state into one row of predictions.csv."""
     decision = state["screening_decision"]
     include = decision.labels == ["include"]
-    conf = decision.confidence if decision.confidence is not None else 0.5
+    if decision.include_score is not None:
+        score = decision.include_score
+    else:
+        conf = decision.confidence if decision.confidence is not None else 0.5
+        score = conf if include else 1 - conf
     labels = {}
     if include:
         labels = {f: d.labels for f, d in (state.get("annotation_decisions") or {}).items() if d.labels}
@@ -73,7 +98,7 @@ def to_prediction(state: dict) -> GoldRecord:
         pmid=state["article"].pmid,
         screening="include" if include else "exclude",
         labels=labels,
-        score=round(conf if include else 1 - conf, 4),
+        score=round(score, 4),
     )
 
 
@@ -129,14 +154,39 @@ def execute(config: RunConfig, part: str | None = None, limit: int | None = None
         raise RuntimeError(f"Articles not available: {report.missing}")
     articles = [articles_by[p] for p in pmids]
 
-    llms = {role: build_llm(config.roles[role].model, config.cache_dir, codebook) for role in ROLES if role in config.roles}
-    personas = {role: rc.persona for role, rc in config.roles.items() if rc.persona}
-    graph = build_pipeline(llms, codebook, personas)
+    # One LLM object per distinct model config, so reviewers sharing a model share its rate limiter.
+    pool: dict[str, LLM] = {}
+
+    def llm_for(cfg: ModelConfig) -> LLM:
+        key = cfg.model_dump_json()
+        if key not in pool:
+            pool[key] = build_llm(cfg, config.cache_dir, codebook)
+        return pool[key]
+
+    for role in ("triage", "extraction"):
+        if role not in config.roles:
+            raise ValueError(f"Config needs roles.{role}")
+    reviewer_cfgs = config.reviewer_configs()
+    reviewers = [
+        Reviewer(
+            id=rc.id,
+            llm=llm_for(rc.model),
+            annotation_llm=llm_for(rc.annotation_model or rc.model),
+            persona=rc.persona,
+            weight=rc.weight,
+        )
+        for rc in reviewer_cfgs
+    ]
+    graph = build_pipeline(codebook, llm_for(config.roles["triage"].model), llm_for(config.roles["extraction"].model), reviewers)
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     out = Path(out_root) / config.name / stamp
     out.mkdir(parents=True, exist_ok=True)
-    print(f"Run {config.name} ({config.condition}) on {part}: {len(articles)} articles -> {out}", file=sys.stderr)
+    print(
+        f"Run {config.name} ({config.condition}) on {part}: {len(articles)} articles, "
+        f"{len(reviewers)} reviewer(s) -> {out}",
+        file=sys.stderr,
+    )
 
     started = time.monotonic()
     states, failures = run_articles(graph, articles, config.concurrency)
@@ -160,6 +210,13 @@ def execute(config: RunConfig, part: str | None = None, limit: int | None = None
     scored = evaluate(gold, load_gold(out / "predictions.csv", codebook), codebook, pmids)
     scored["usage"] = usage_summary(usages, len(articles), wall_seconds=round(wall, 2))
     scored["failures"] = len(failures)
+    scored["panel_agreement"] = panel_agreement(states, [r.id for r in reviewers], list(codebook.dimensions))
+    methods: dict[str, int] = {}
+    for st in states:
+        for d in [st["screening_decision"], *(st.get("annotation_decisions") or {}).values()]:
+            key = f"{d.field}:{d.method}"
+            methods[key] = methods.get(key, 0) + 1
+    scored["decision_methods"] = dict(sorted(methods.items()))
     scored["warnings"] = sum(len(v.warnings) for s in states for v in s.get("screening_votes", []) + s.get("annotation_votes", []))
     (out / "report.json").write_text(json.dumps(scored, indent=2) + "\n")
 
@@ -193,6 +250,13 @@ def execute(config: RunConfig, part: str | None = None, limit: int | None = None
         f"tokens in/out {u['total']['input_tokens']}/{u['total']['output_tokens']}   cost {cost}"
     )
     print(f"  failures {len(failures)}   evidence/label warnings {scored['warnings']}")
+    pa = scored["panel_agreement"]
+    if pa:
+        print(f"\nPANEL AGREEMENT (independent votes of {', '.join(pa['reviewers'])})")
+        for field, v in pa.items():
+            if field != "reviewers":
+                print(f"  {field:12} Fleiss kappa {v['fleiss_kappa']:.3f}   unanimous {v['unanimous']}/{v['items']}")
+        print("  how decisions were reached: " + ", ".join(f"{k} {n}" for k, n in scored["decision_methods"].items()))
     if any(rc.model.provider == "fake" for rc in config.roles.values()):
         print("\nNOTE: this run used the FAKE keyword model. Scores check the plumbing only; they are not results.")
     print(f"\nSaved in {out}/")

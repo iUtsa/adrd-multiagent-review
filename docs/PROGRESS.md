@@ -4,6 +4,34 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-09-30 — Gemini plan, professor's search, agent docs, Day 5 panel
+
+**Model plan changed to Gemini** (professor provided a Gemini licence): [MODELS.md](MODELS.md).
+- Panel = three Gemini versions × three perspectives; adjudicator = Gemini Pro (not on the panel).
+- `llm.py`: added `groq` provider (optional free second family), `extra` options (Vertex AI project/location, Gemini thinking budget) and `structured_method`.
+- Waiting on: which kind of Gemini access the licence is (AI Studio key vs Vertex AI project).
+
+**Professor's PubMed search** (`configs/search/prof_query.yaml`):
+- Original and corrected Boolean both return **1,855** articles (PubMed inserted the missing AND); PMIDs saved to `data/search/`.
+- The query shows the real review topic: **AI/machine learning for ADRD detection/prediction in older adults, 2015–2025**. The placeholder codebook (Cochrane cognitive-test reviews) is a different topic; it still tests screening mechanics, and prompts will follow the real codebook automatically.
+
+**Agent build documentation** ([agents/](agents/README.md)): a 13-section build document for every agent (triage, screening reviewer, extraction, annotation reviewer, reviewer panel), plus exact prompts generated from the live code by `scripts/render_prompts.py`.
+
+**Day 5: reviewer panel (E2)**
+
+| Task | Status |
+|---|---|
+| 5.1 Panel config | ✅ `E2_gemini.yaml` (3 Gemini versions × 3 perspectives), `E2_fake.yaml` |
+| 5.2 Parallel reviewers, votes, agreement check, weighted vote | ✅ LangGraph `Send` fan-out; `consensus.py` |
+| 5.3 Reusable for screening and each dimension | ✅ Same graph, per-dimension combining |
+| 5.4 Agents' Fleiss' κ vs humans' | ⏳ Agents' κ reported every run; needs a real model run and per-reviewer human labels |
+
+- E1 is now a panel of one: one graph for all conditions; E1 results unchanged.
+- Fake E2 run, 40 calibration articles: reviewers disagreed on 20/40 (Fleiss' κ 0.300), 252 calls, 0 failures, 0 warnings.
+- **Tests: 69 pass** (+1 live PubMed test, opt-in).
+
+---
+
 ## 2026-09-30 — Day 4 (first agents) built, two days early
 
 | Task | Status |

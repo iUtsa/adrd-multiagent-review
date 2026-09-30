@@ -1,0 +1,35 @@
+# E2 panel on Gemini: three independent reviewers + weighted majority vote.
+# Needs GOOGLE_API_KEY (or Vertex AI settings, see .env.example).
+#
+# Gemini-only plan: the three reviewers differ by perspective (persona) AND by
+# Gemini version, the most variety available inside one model family. Prior work
+# found panels gain most from different model families; E2_mixed (Gemini + Groq)
+# tests that once a Groq key exists. See docs/MODELS.md.
+#
+#   python -m adrd_review.graph.runner configs/runs/E2_gemini.yaml --limit 3
+name: E2_gemini
+condition: E2
+description: 3-reviewer Gemini panel (3 versions x 3 perspectives) + weighted majority vote
+part: calibration
+concurrency: 2
+
+roles:
+  triage:     {model: {provider: google, model: gemini-3.5-flash-lite, max_tokens: 1024, requests_per_minute: 10}}
+  extraction: {model: {provider: google, model: gemini-3.8-flash, requests_per_minute: 10}}
+
+panel:
+  - id: A
+    persona: >-
+      a clinical neurologist who diagnoses dementia. You pay closest attention to whether the target
+      condition, the test being evaluated and the reference-standard diagnosis are clinically sound.
+    model: {provider: google, model: gemini-3.8-flash, requests_per_minute: 10}
+  - id: B
+    persona: >-
+      an epidemiologist. You pay closest attention to who was studied, where they were recruited,
+      and whether the sample and setting match what the review asks for.
+    model: {provider: google, model: gemini-3.7-flash, requests_per_minute: 10}
+  - id: C
+    persona: >-
+      a research methodologist. You pay closest attention to study design, data sources, and whether
+      diagnostic accuracy can actually be assessed from the study.
+    model: {provider: google, model: gemini-3.5-flash, requests_per_minute: 10}

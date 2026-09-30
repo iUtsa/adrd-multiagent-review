@@ -1,0 +1,26 @@
+# PubMed search used by the human team, as sent by Prof. Wei (email, 2026-09-30).
+# `original` is verbatim. `corrected` fixes the Boolean structure: the dementia group
+# was not closed and had no AND before the machine-learning group. Terms, dates and
+# language are unchanged. Confirm the corrected version with the professor.
+
+source: "Prof. Duo Wei, email 2026-09-30"
+
+original: >-
+  ( "dementia"[tiab] OR "Dementia"[MeSH Terms] OR "Alzheimer's"[tiab] OR "Alzheimer Disease"[MeSH Terms]
+  ("machine learning"[tiab] OR "Machine Learning"[MeSH Terms] OR "AI"[tiab] OR "artificial intelligence"[tiab]
+  OR "Artificial Intelligence"[MeSH Terms]) AND ("detection"[tiab] OR "detect"[tiab] OR "identification"[tiab]
+  OR "identify"[tiab] OR "diagnosis"[tiab] OR "Diagnosis"[MeSH Terms] OR "diagnostic"[tiab] OR "monitoring"[tiab]
+  OR "monitor"[tiab] OR "predict"[tiab] OR "prediction"[tiab]) AND ("senior"[tiab] OR "elderly"[tiab]
+  OR "geriatrics"[tiab] OR "Geriatrics"[MeSH Terms] OR "older adults"[tiab] OR "Aged"[MeSH Terms]))
+  AND ("2015/01/01"[Date - Publication] : "2025/07/31"[Date - Publication]) AND English[Language]
+
+corrected: >-
+  ("dementia"[tiab] OR "Dementia"[MeSH Terms] OR "Alzheimer's"[tiab] OR "Alzheimer Disease"[MeSH Terms])
+  AND ("machine learning"[tiab] OR "Machine Learning"[MeSH Terms] OR "AI"[tiab] OR "artificial intelligence"[tiab]
+  OR "Artificial Intelligence"[MeSH Terms])
+  AND ("detection"[tiab] OR "detect"[tiab] OR "identification"[tiab] OR "identify"[tiab] OR "diagnosis"[tiab]
+  OR "Diagnosis"[MeSH Terms] OR "diagnostic"[tiab] OR "monitoring"[tiab] OR "monitor"[tiab] OR "predict"[tiab]
+  OR "prediction"[tiab])
+  AND ("senior"[tiab] OR "elderly"[tiab] OR "geriatrics"[tiab] OR "Geriatrics"[MeSH Terms] OR "older adults"[tiab]
+  OR "Aged"[MeSH Terms])
+  AND ("2015/01/01"[Date - Publication] : "2025/07/31"[Date - Publication]) AND English[Language]

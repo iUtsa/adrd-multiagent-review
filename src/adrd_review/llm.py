@@ -5,7 +5,8 @@
     result.parsed   # a validated ScreeningAnswer
     result.usage    # tokens, cost, seconds, cached?
 
-Providers: anthropic, google, openai, openrouter, ollama (through LangChain), and
+Providers: google (AI Studio key or Vertex AI), anthropic, openai, openrouter, groq,
+ollama (all through LangChain), and
 `fake`, a keyword-rule stand-in used for tests and for running the pipeline
 without an API key. Fake answers are plumbing checks, never results.
 """
@@ -28,7 +29,7 @@ from adrd_review.schemas import Usage
 
 T = TypeVar("T", bound=BaseModel)
 
-Provider = Literal["anthropic", "google", "openai", "openrouter", "ollama", "fake"]
+Provider = Literal["google", "anthropic", "openai", "openrouter", "groq", "ollama", "fake"]
 
 
 class ModelConfig(BaseModel):
@@ -39,6 +40,13 @@ class ModelConfig(BaseModel):
     requests_per_minute: float | None = None  # stay under free-tier limits
     price_in_per_mtok: float | None = None  # USD per million input tokens (optional)
     price_out_per_mtok: float | None = None
+    # How LangChain asks for structured output: None = provider default, or
+    # "function_calling" / "json_schema" / "json_mode" (e.g. for OpenAI-compatible hosts).
+    structured_method: str | None = None
+    # Extra constructor options passed straight to the LangChain model, e.g. for Gemini
+    # on Vertex AI: {vertexai: true, project: my-gcp-project, location: us-central1},
+    # or {thinking_budget: 0} to turn off Gemini's thinking step.
+    extra: dict[str, Any] = {}
 
     @property
     def label(self) -> str:
@@ -81,6 +89,8 @@ class ResponseCache:
             "model": config.model,
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
+            "structured_method": config.structured_method,
+            "extra": config.extra,
             "schema": schema.model_json_schema(),
             "system": system,
             "user": user,
@@ -128,7 +138,8 @@ class RateLimiter:
 
 def make_chat_model(config: ModelConfig):
     """Build the LangChain chat model for a config (imports only what is needed)."""
-    p, kw = config.provider, {"model": config.model, "temperature": config.temperature}
+    p = config.provider
+    kw = {"model": config.model, "temperature": config.temperature, **config.extra}
     if p == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
@@ -137,11 +148,16 @@ def make_chat_model(config: ModelConfig):
         from langchain_google_genai import ChatGoogleGenerativeAI
 
         return ChatGoogleGenerativeAI(**kw, max_output_tokens=config.max_tokens)
-    if p in ("openai", "openrouter"):
+    if p in ("openai", "openrouter", "groq"):
         from langchain_openai import ChatOpenAI
 
-        if p == "openrouter":
-            kw |= {"base_url": "https://openrouter.ai/api/v1", "api_key": os.getenv("OPENROUTER_API_KEY")}
+        hosts = {
+            "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
+            "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
+        }
+        if p in hosts:
+            url, env = hosts[p]
+            kw = {"base_url": url, "api_key": os.getenv(env), **kw}
         return ChatOpenAI(**kw, max_tokens=config.max_tokens)
     if p == "ollama":
         from langchain_ollama import ChatOllama
@@ -174,7 +190,8 @@ class LangChainLLM:
 
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        runnable = self.chat.with_structured_output(schema, include_raw=True)
+        method = {"method": self.config.structured_method} if self.config.structured_method else {}
+        runnable = self.chat.with_structured_output(schema, include_raw=True, **method)
         messages = [SystemMessage(content=system), HumanMessage(content=user)]
         last_error: Any = None
         for attempt in range(1, self.max_attempts + 1):
@@ -232,5 +249,5 @@ def build_llm(config: ModelConfig, cache_dir: str | Path | None = None, codebook
     if config.provider == "fake":
         from adrd_review.fake_model import default_responders
 
-        return FakeLLM(config, default_responders(codebook))
+        return FakeLLM(config, default_responders(codebook, style=config.model))
     return LangChainLLM(config, cache=ResponseCache(cache_dir))

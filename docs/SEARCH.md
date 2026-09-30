@@ -1,0 +1,34 @@
+# The professor's PubMed search
+
+Sent by Prof. Wei on 2026-09-30 ("please adjust the Boolean expression when you use it"). Stored in `configs/search/prof_query.yaml` (original verbatim + corrected).
+
+## What was corrected
+
+The dementia group was not closed and had no `AND` before the machine-learning group:
+
+```
+( "dementia"[tiab] OR ... OR "Alzheimer Disease"[MeSH Terms] ("machine learning"[tiab] ...
+```
+
+The corrected version closes the dementia group and joins the four groups with `AND`. Terms, date range (2015/01/01–2025/07/31) and language (English) are unchanged.
+
+## Result
+
+| Version | PubMed count |
+|---|---|
+| Original | 1,855 |
+| Corrected | 1,855 |
+
+PubMed's parser inserted the missing `AND` itself, so both return the same set. We cite the corrected version because it is unambiguous. **To confirm with the professor.**
+
+The 1,855 PMIDs are saved in `data/search/prof_query_pmids.txt` (git-ignored) with the run date in `prof_query_meta.json`. Re-run:
+
+```bash
+python -c "import yaml; from adrd_review.tools.pubmed import search; ids, n = search(yaml.safe_load(open('configs/search/prof_query.yaml'))['corrected']); print(n)"
+```
+
+## What it tells us
+
+- The review topic is **AI / machine learning for detecting, diagnosing, monitoring or predicting ADRD in older adults**. The placeholder gold standard and codebook (Cochrane reviews of cognitive tests such as MMSE and MoCA) are a different topic. They still test the screening mechanics; the agents' prompts follow the real codebook automatically once it arrives.
+- The human team's 268 articles are presumably drawn from these 1,855. Once we have their PMIDs, the retrieval check (task 9.3) measures how many the search recovers.
+- `"AI"[tiab]` also matches unrelated uses of the abbreviation (for example aromatase inhibitor), a keyword trap the screening agents will need to handle.

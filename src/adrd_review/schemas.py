@@ -131,8 +131,9 @@ class Decision(BaseModel):
 
     field: str
     labels: list[str]
-    method: str  # "single", "unanimous", "majority", "adjudicator", "human"
-    confidence: float | None = None
+    method: str  # "single", "unanimous", "majority", "tie_include", "adjudicator", "human"
+    confidence: float | None = None  # share of reviewer weight behind the chosen labels
+    include_score: float | None = None  # screening only: 0-1 likelihood of include (ranks articles for WSS@95)
 
 
 class Usage(BaseModel):

@@ -1,17 +1,20 @@
 # Agents and the pipeline
 
-How the agents are built (LangChain), wired together (LangGraph), and run. Current stage: **E1**, one reviewer agent. Days 5–8 add the 3-reviewer panel, adjudicator, verifier and debate test on top of the same pieces.
+How the agents are built (LangChain), wired together (LangGraph), and run. Built so far: **E1** (one reviewer) and **E2** (3-reviewer panel + weighted majority vote). Days 6–8 add the adjudicator, verifier, human review and debate test on top of the same pieces.
+
+**Detailed build documentation for each agent is in [docs/agents/](agents/README.md)**, with the exact prompts generated from the live code. Model choices: [MODELS.md](MODELS.md).
 
 ---
 
-## The E1 pipeline
+## The pipeline
 
 ```
-START -> triage -> screen --include--> extract -> annotate -> END
-                         \--exclude--> END
+START -> triage -> [screen_reviewer x N] -> screen_consensus
+      --include--> extract -> [annotate_reviewer x N] -> annotate_consensus -> END
+      --exclude--> END
 ```
 
-Code: `src/adrd_review/graph/pipeline.py`. Excluded articles stop after screening, so they cost 2 model calls instead of 4.
+Code: `src/adrd_review/graph/pipeline.py`. The N reviewers run in parallel (LangGraph `Send`) and never see each other's votes. E1 is N = 1; E2 is N = 3. Excluded articles stop after screening. How votes are combined: [agents/reviewer-panel.md](agents/reviewer-panel.md).
 
 ## The agents
 
@@ -36,10 +39,11 @@ Answer forms: `src/adrd_review/schemas.py`. The field descriptions there are sen
 
 | Provider | LangChain class | Key in `.env` |
 |---|---|---|
-| `google` | `ChatGoogleGenerativeAI` | `GOOGLE_API_KEY` |
+| `google` | `ChatGoogleGenerativeAI` (AI Studio key, or Vertex AI via `extra`) | `GOOGLE_API_KEY` |
 | `anthropic` | `ChatAnthropic` | `ANTHROPIC_API_KEY` |
 | `openai` | `ChatOpenAI` | `OPENAI_API_KEY` |
 | `openrouter` (open-weights models) | `ChatOpenAI` via openrouter.ai | `OPENROUTER_API_KEY` |
+| `groq` (open-weights models, free tier) | `ChatOpenAI` via api.groq.com | `GROQ_API_KEY` |
 | `ollama` (local, on standby) | `ChatOllama` | none |
 | `fake` | keyword rules, no AI | none |
 
@@ -49,6 +53,7 @@ Built-in behaviour:
 - **Rate limit** per model (`requests_per_minute`), to stay under free-tier limits.
 - **Retries** on network or provider errors, with increasing waits.
 - **Cost** is computed when the config gives prices (USD per million tokens); otherwise tokens are still recorded.
+- **Extra options** pass straight to the LangChain model (`extra:`), e.g. Vertex AI project/location or Gemini's `thinking_budget`; `structured_method:` picks how structured output is requested.
 
 ### The fake model
 
@@ -70,12 +75,14 @@ roles:
   annotation: {model: {provider: google, model: gemini-3.8-flash, requests_per_minute: 10}}
 ```
 
-A role can also have a `persona` (used from Day 5 for the reviewer panel).
+Panel runs keep `roles.triage` and `roles.extraction` and list the reviewers under `panel:` (id, persona, model, optional weight); see [agents/reviewer-panel.md](agents/reviewer-panel.md).
 
 | Config | Needs | Use |
 |---|---|---|
-| `E1_fake.yaml` | nothing | plumbing check |
-| `E1_gemini.yaml` | `GOOGLE_API_KEY` | first real E1 run |
+| `E1_fake.yaml` | nothing | one reviewer, plumbing check |
+| `E1_gemini.yaml` | Gemini access | first real E1 run |
+| `E2_fake.yaml` | nothing | 3-reviewer panel, plumbing check |
+| `E2_gemini.yaml` | Gemini access | 3 Gemini versions × 3 perspectives |
 
 ## Running
 
@@ -94,7 +101,7 @@ Each run writes `data/runs/<name>/<timestamp>/`:
 | `decisions.jsonl` | Everything per article: triage, every vote with quotes, rule IDs, rationale, confidence, warnings; extraction |
 | `usage.jsonl` | One line per model call: role, model, tokens, cost, seconds, cached |
 | `failures.json` | Articles that errored, with the error |
-| `report.json` | Scores, cost/time summary, failure and warning counts |
+| `report.json` | Scores, cost/time summary, failure and warning counts, panel agreement (Fleiss' κ among reviewers), how each decision was reached |
 | `run_meta.json` | Config, codebook version + hash, gold hash, split file, git commit, timings |
 
 **Failed articles are predicted `include`** (score 0.5) so a crash can never silently drop a study; they are listed in `failures.json` and counted in the report.
