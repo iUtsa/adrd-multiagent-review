@@ -26,7 +26,27 @@ Model IDs come from Google's model list (checked 2026-09-30). Preview models can
 | Adjudicator from a 4th company | Gemini Pro (not used by any reviewer) | Still stronger than the reviewers and independent of their votes. Possible same-family bias is noted. |
 | Everything else (triage, extraction, consensus, verifier, human review, curator, debate test, scoring) | Unchanged | None |
 
-## Optional: a second model family for free (recommended)
+## Groq: second and third model families (key added 2026-09-30)
+
+A Groq free-tier key is in `.env` (`GROQ_API_KEY`). Groq's general-purpose models, checked 2026-09-30:
+
+| Model | Family | Structured output | Free limits |
+|---|---|---|---|
+| `openai/gpt-oss-120b` | OpenAI open-weights (large) | default works | 1,000 requests/day, 8,000 tokens/min |
+| `openai/gpt-oss-20b` | OpenAI open-weights (small) | default works | same |
+| `qwen/qwen3.8-27b` | Alibaba Qwen | needs `structured_method: function_calling` | same |
+
+**The token limit is the tight one**: a screening call uses ~2,400 tokens (gpt-oss spends ~800 on reasoning), so each model manages ~3 calls/min. Configs set `requests_per_minute: 3`, and rate-limit errors now back off 15/30/45/60 s (5 attempts). Fine for calibration runs; the full test set with repeats would exceed 1,000 requests/day per model.
+
+| Config | Needs | Panel |
+|---|---|---|
+| `E1_groq.yaml` | Groq | one reviewer, gpt-oss-120b |
+| `E2_groq.yaml` | Groq | gpt-oss-120b + qwen3.8-27b + gpt-oss-20b (runs today, no Gemini) |
+| `E2_mixed.yaml` | Gemini + Groq | **three families**: Gemini 3.8 Flash + Qwen 3.8 + gpt-oss-120b; compare with `E2_gemini` |
+
+First real runs (2026-09-30): in a 3-article check all three models correctly excluded a lymphoma paper whose abstract mentions the chemotherapy regimen "MOCA", the keyword trap that fooled the keyword baseline.
+
+## Other free providers considered
 
 To test whether variety between model families matters, which is a question the paper can answer, add one non-Google reviewer:
 
@@ -38,7 +58,7 @@ To test whether variety between model families matters, which is a question the 
 
 Sources: [OpenRouter free LLM API comparison](https://openrouter.ai/blog/tutorials/free-llm-apis-compared/), [KDnuggets free LLM API providers](https://www.kdnuggets.com/5-free-llm-api-providers-you-can-use-in-2026).
 
-With a Groq key (`GROQ_API_KEY` in `.env`), an `E2_mixed` config replaces reviewer C with an open-weights model on Groq. The code already supports it (`provider: groq`). Comparing `E2_gemini` with `E2_mixed` becomes the "same family vs different families" experiment.
+Groq was chosen and is set up (above). Comparing `E2_gemini` with `E2_mixed` is the "same family vs different families" experiment.
 
 ## Two kinds of Gemini access
 

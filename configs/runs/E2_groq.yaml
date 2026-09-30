@@ -1,0 +1,30 @@
+# E2 panel on Groq's free tier only (runs without Gemini): two model families,
+# OpenAI open-weights (gpt-oss 120b and 20b) and Alibaba Qwen. For real-model checks
+# on the calibration set while Gemini access is pending. Free limits: ~3 calls/min per model.
+#   python -m adrd_review.graph.runner configs/runs/E2_groq.yaml --limit 5
+name: E2_groq
+condition: E2
+description: 3-reviewer panel on Groq (gpt-oss-120b, qwen3.8-27b, gpt-oss-20b), free tier
+part: calibration
+concurrency: 2
+
+roles:
+  triage:     {model: {provider: groq, model: openai/gpt-oss-20b, max_tokens: 1500, requests_per_minute: 3}}
+  extraction: {model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 2048, requests_per_minute: 3}}
+
+panel:
+  - id: A
+    persona: >-
+      a clinical neurologist who diagnoses dementia. You pay closest attention to whether the target
+      condition, the test being evaluated and the reference-standard diagnosis are clinically sound.
+    model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 2048, requests_per_minute: 3}
+  - id: B
+    persona: >-
+      an epidemiologist. You pay closest attention to who was studied, where they were recruited,
+      and whether the sample and setting match what the review asks for.
+    model: {provider: groq, model: qwen/qwen3.8-27b, max_tokens: 2048, structured_method: function_calling, requests_per_minute: 3}
+  - id: C
+    persona: >-
+      a research methodologist. You pay closest attention to study design, data sources, and whether
+      diagnostic accuracy can actually be assessed from the study.
+    model: {provider: groq, model: openai/gpt-oss-20b, max_tokens: 2048, requests_per_minute: 3}

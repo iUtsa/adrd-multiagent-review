@@ -9,3 +9,7 @@ models:
   google:gemini-3.5-flash:      {input: 1.50, output: 9.00, free_tier: true}
   google:gemini-3.5-flash-lite: {input: 0.30, output: 2.50, free_tier: true}
   google:gemini-3.1-pro-preview: {input: 2.00, output: 12.00, free_tier: false}  # prompts <= 200k tokens
+  # Groq free tier (key added 2026-09-30): no charge; limits 1,000 requests/day and 8,000 tokens/min per model
+  groq:openai/gpt-oss-120b:     {input: 0.0, output: 0.0, free_tier: true}
+  groq:openai/gpt-oss-20b:      {input: 0.0, output: 0.0, free_tier: true}
+  groq:qwen/qwen3.8-27b:        {input: 0.0, output: 0.0, free_tier: true}

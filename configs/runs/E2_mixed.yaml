@@ -1,0 +1,30 @@
+# E2 "mixed families" panel: three reviewers from three different model families
+# (Google Gemini, Alibaba Qwen, OpenAI open-weights). Compare with E2_gemini
+# (one family, three versions) to measure how much family diversity matters.
+# Needs Gemini access AND GROQ_API_KEY. Groq free tier: ~3 calls/min per model.
+name: E2_mixed
+condition: E2
+description: 3-reviewer panel from 3 model families (Gemini 3.8 Flash, Qwen 3.8 27B, gpt-oss-120b)
+part: calibration
+concurrency: 2
+
+roles:
+  triage:     {model: {provider: google, model: gemini-3.5-flash-lite, max_tokens: 1024, requests_per_minute: 10}}
+  extraction: {model: {provider: google, model: gemini-3.8-flash, requests_per_minute: 10}}
+
+panel:
+  - id: A
+    persona: >-
+      a clinical neurologist who diagnoses dementia. You pay closest attention to whether the target
+      condition, the test being evaluated and the reference-standard diagnosis are clinically sound.
+    model: {provider: google, model: gemini-3.8-flash, requests_per_minute: 10}
+  - id: B
+    persona: >-
+      an epidemiologist. You pay closest attention to who was studied, where they were recruited,
+      and whether the sample and setting match what the review asks for.
+    model: {provider: groq, model: qwen/qwen3.8-27b, max_tokens: 2048, structured_method: function_calling, requests_per_minute: 3}
+  - id: C
+    persona: >-
+      a research methodologist. You pay closest attention to study design, data sources, and whether
+      diagnostic accuracy can actually be assessed from the study.
+    model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 2048, requests_per_minute: 3}

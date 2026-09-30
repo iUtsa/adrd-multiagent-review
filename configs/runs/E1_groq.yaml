@@ -1,0 +1,15 @@
+# E1 on Groq's free tier (no Gemini needed): one reviewer, OpenAI's open-weights gpt-oss-120b.
+# Free limits per model: 1,000 requests/day and 8,000 tokens/min (~3 calls/min), so runs are slow;
+# use for real-model checks on the calibration set, not for the full test set.
+#   python -m adrd_review.graph.runner configs/runs/E1_groq.yaml --limit 3
+name: E1_groq
+condition: E1
+description: Single reviewer on Groq gpt-oss-120b (free tier)
+part: calibration
+concurrency: 2
+
+roles:
+  triage:     {model: {provider: groq, model: openai/gpt-oss-20b, max_tokens: 1500, requests_per_minute: 3}}
+  screening:  {model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 2048, requests_per_minute: 3}}
+  extraction: {model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 2048, requests_per_minute: 3}}
+  annotation: {model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 2048, requests_per_minute: 3}}

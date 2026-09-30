@@ -153,7 +153,7 @@ def test_parse_failure_is_retried_then_gives_up(tmp_path):
     cfg = ModelConfig(provider="google", model="m")
     llm = LangChainLLM(cfg, chat_model=StubChat([bad, good_output()]), cache=ResponseCache(None))
     assert llm.structured(ScreeningAnswer, "s", "u", role="screening").parsed.decision == "exclude"
-    llm = LangChainLLM(cfg, chat_model=StubChat([bad, bad, bad]), cache=ResponseCache(None))
+    llm = LangChainLLM(cfg, chat_model=StubChat([bad, bad, bad]), cache=ResponseCache(None), max_attempts=3)
     with pytest.raises(LLMError, match="invalid json"):
         llm.structured(ScreeningAnswer, "s", "u", role="screening")
 

@@ -173,7 +173,7 @@ class LangChainLLM:
         config: ModelConfig,
         chat_model=None,
         cache: ResponseCache | None = None,
-        max_attempts: int = 3,
+        max_attempts: int = 5,
         namespace: str = "",
     ):
         self.namespace = namespace
@@ -210,7 +210,11 @@ class LangChainLLM:
                 out = runnable.invoke(messages)
             except Exception as e:  # network, rate limit, provider error
                 last_error = e
-                time.sleep(min(30, 2**attempt))
+                if attempt == self.max_attempts:
+                    break
+                # Per-minute token limits (e.g. Groq free tier: 8,000 tokens/min) need a real pause.
+                rate_limited = "429" in str(e) or "rate limit" in str(e).lower() or "quota" in str(e).lower()
+                time.sleep(15 * attempt if rate_limited else min(30, 2**attempt))
                 continue
             seconds = time.monotonic() - start
             parsed = out.get("parsed")

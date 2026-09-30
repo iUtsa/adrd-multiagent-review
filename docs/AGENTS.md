@@ -51,7 +51,7 @@ Answer forms: `src/adrd_review/schemas.py`. The field descriptions there are sen
 | `anthropic` | `ChatAnthropic` | `ANTHROPIC_API_KEY` |
 | `openai` | `ChatOpenAI` | `OPENAI_API_KEY` |
 | `openrouter` (open-weights models) | `ChatOpenAI` via openrouter.ai | `OPENROUTER_API_KEY` |
-| `groq` (open-weights models, free tier) | `ChatOpenAI` via api.groq.com | `GROQ_API_KEY` |
+| `groq` (open-weights models, free tier; **key set**) | `ChatOpenAI` via api.groq.com | `GROQ_API_KEY` |
 | `ollama` (local, on standby) | `ChatOllama` | none |
 | `fake` | keyword rules, no AI | none |
 
@@ -95,6 +95,8 @@ Panel runs keep `roles.triage` and `roles.extraction` and list the reviewers und
 | `E4_fake.yaml` / `E4_gemini.yaml` | nothing / Gemini | + human review (gold answers stand in for the person) |
 | `E4_queue_fake.yaml` | nothing | + human review that really pauses for a person |
 | `D_fake.yaml` / `D_gemini.yaml` | nothing / Gemini | E3 + 2 debate rounds |
+| `E1_groq.yaml`, `E2_groq.yaml` | Groq | real models while Gemini is pending ([MODELS.md](MODELS.md)) |
+| `E2_mixed.yaml` | Gemini + Groq | panel from three model families |
 
 Extra config keys: `adjudicator:` (model), `escalate_below:` (default 0.6), `verifier: {enabled, model}`, `debate_rounds:`, `human: none | gold | queue`.
 
