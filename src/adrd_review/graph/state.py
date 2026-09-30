@@ -21,6 +21,7 @@ from adrd_review.schemas import (
 class ArticleState(TypedDict, total=False):
     article: Article
     triage: TriageReport
+    fulltext_info: dict  # whether PubMed Central full text was fetched and used
     # Lists marked operator.add are appended to, never overwritten, so parallel
     # reviewers can each add their vote and debate rounds keep earlier votes.
     screening_votes: Annotated[list[Vote], operator.add]

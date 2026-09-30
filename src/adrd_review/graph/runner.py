@@ -38,6 +38,7 @@ from adrd_review.codebook import Codebook, load_codebook
 from adrd_review.consensus import panel_agreement
 from adrd_review.eval.metrics import usage_summary
 from adrd_review.eval.score import evaluate, format_report
+from adrd_review.freeze import prompts_sha
 from adrd_review.gold import GoldRecord, file_sha256, load_gold, write_gold
 from adrd_review.graph.pipeline import PipelineOptions, Reviewer, build_pipeline
 from adrd_review.llm import LLM, ModelConfig, build_llm
@@ -88,6 +89,10 @@ class RunConfig(BaseModel):
     # E4: who answers escalated decisions. gold = the gold label stands in for a person;
     # queue = the run pauses until a person answers with adrd_review.human_review
     human: Literal["none", "gold", "queue"] = "none"
+    # PubMed Central full text: never (abstract only, like title/abstract screening), when_needed
+    # (triage says the abstract is not enough), or always. Excerpt capped at fulltext_max_chars.
+    fulltext: Literal["never", "when_needed", "always"] = "never"
+    fulltext_max_chars: int = 12000
 
     def reviewer_configs(self) -> list[ReviewerConfig]:
         if self.panel:
@@ -108,14 +113,14 @@ def load_run_config(path: str | Path) -> RunConfig:
 # --------------------------------------------------------------------------- #
 
 
-def build_graph(config: RunConfig, codebook: Codebook, gold: list[GoldRecord], checkpointer=None):
+def build_graph(config: RunConfig, codebook: Codebook, gold: list[GoldRecord], checkpointer=None, repeat: int = 0):
     # One LLM object per distinct model config, so reviewers sharing a model share its rate limiter.
     pool: dict[str, LLM] = {}
 
     def llm_for(cfg: ModelConfig) -> LLM:
         key = cfg.model_dump_json()
         if key not in pool:
-            pool[key] = build_llm(cfg, config.cache_dir, codebook)
+            pool[key] = build_llm(cfg, config.cache_dir, codebook, namespace=f"repeat-{repeat}" if repeat else "")
         return pool[key]
 
     for role in ("triage", "extraction"):
@@ -142,6 +147,8 @@ def build_graph(config: RunConfig, codebook: Codebook, gold: list[GoldRecord], c
         verifier=llm_for(v.model) if v and v.enabled and v.model else None,
         debate_rounds=config.debate_rounds,
         human=human,
+        fulltext=config.fulltext,
+        fulltext_max_chars=config.fulltext_max_chars,
     )
     graph = build_pipeline(
         codebook,
@@ -361,7 +368,10 @@ def execute(
     limit: int | None = None,
     out_root: str = "data/runs",
     config_path: str | None = None,
+    repeat: int = 0,
 ) -> Path:
+    """repeat = 0: normal run (shares the response cache). repeat >= 1: an independent
+    repeat whose model answers are cached separately, so the model is really called again."""
     part = part or config.part
     if part == "test":
         from adrd_review.freeze import check
@@ -381,10 +391,10 @@ def execute(
     articles = [articles_by[p] for p in pmids]
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    out = Path(out_root) / config.name / stamp
+    out = Path(out_root) / config.name / (f"{stamp}-r{repeat}" if repeat else stamp)
     out.mkdir(parents=True, exist_ok=True)
     checkpointer = open_checkpointer(out / "checkpoints.sqlite") if config.human == "queue" else None
-    graph, reviewers = build_graph(config, codebook, gold, checkpointer)
+    graph, reviewers = build_graph(config, codebook, gold, checkpointer, repeat)
     print(
         f"Run {config.name} ({config.condition}) on {part}: {len(articles)} articles, "
         f"{len(reviewers)} reviewer(s) -> {out}",
@@ -401,12 +411,14 @@ def execute(
         "part": part,
         "pmids": pmids,
         "limit": limit,
+        "repeat": repeat,
         "started_utc": stamp,
         "wall_seconds": round(wall, 2),
         "failures": len(failures),
         "git_commit": _git_commit(),
         "codebook_version": codebook.version,
         "codebook_sha256": codebook.sha256,
+        "prompts_sha256": prompts_sha(),  # agent code + prompts: runs are only averaged if this matches
         "gold_sha256": file_sha256(config.gold),
         "split_file": config.split,
         "config": config.model_dump(),
@@ -431,10 +443,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("config", help="Run config YAML, e.g. configs/runs/E2_fake.yaml")
     ap.add_argument("--part", choices=["calibration", "test", "all"], help="Overrides the config")
     ap.add_argument("--limit", type=int, help="Only the first N articles (quick checks)")
+    ap.add_argument("--repeat", type=int, default=0, help="Repeat number (1, 2, 3...): calls the model again instead of using cached answers")
     args = ap.parse_args(argv)
     if args.part == "test":
         print("NOTE: running on the TEST set. Only do this for final, frozen runs.\n", file=sys.stderr)
-    execute(load_run_config(args.config), part=args.part, limit=args.limit, config_path=args.config)
+    execute(load_run_config(args.config), part=args.part, limit=args.limit, config_path=args.config, repeat=args.repeat)
     return 0
 
 

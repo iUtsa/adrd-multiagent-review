@@ -22,6 +22,7 @@ from pathlib import Path
 import yaml
 
 FROZEN_DIR = Path("configs/frozen")
+REPO = Path(__file__).resolve().parents[2]
 PROMPT_SOURCES = ["src/adrd_review/agents", "src/adrd_review/schemas.py", "src/adrd_review/consensus.py"]
 
 
@@ -34,10 +35,10 @@ def prompts_sha() -> str:
     h = hashlib.sha256()
     files = []
     for src in PROMPT_SOURCES:
-        p = Path(src)
+        p = REPO / src
         files += sorted(p.rglob("*.py")) if p.is_dir() else [p]
     for f in files:
-        h.update(str(f).encode())
+        h.update(f.relative_to(REPO).as_posix().encode())  # same hash on any machine / working folder
         h.update(f.read_bytes())
     return h.hexdigest()
 

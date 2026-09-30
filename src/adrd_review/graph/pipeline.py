@@ -7,7 +7,7 @@ PipelineOptions switch steps on:
     E4  + human review of escalated decisions
     D   E3 + debate rounds before the adjudicator
 
-    START -> triage -> [screen_reviewer x N] -> screen_consensus
+    START -> triage -> fulltext (PubMed Central, if configured) -> [screen_reviewer x N] -> screen_consensus
        -> (split, rounds left) screen_debate -> screen_consensus ...
        -> (split, adjudicator) screen_adjudicate
        -> screen_checks -> (escalated, human) screen_human
@@ -25,6 +25,7 @@ ArticleState, so debate rounds never overwrite earlier votes.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from langgraph.graph import END, START, StateGraph
@@ -58,6 +59,9 @@ class PipelineOptions:
     debate_rounds: int = 0  # variant D: rounds of debate on split fields before adjudication
     human: HumanReviewer | None = None  # E4: answers escalated decisions
     fields_debated: list[str] = field(default_factory=list)  # empty = all fields
+    fulltext: str = "never"  # never | when_needed (triage says abstract is not enough) | always
+    fulltext_max_chars: int = 12000
+    fulltext_fetcher: Callable | None = None  # article -> FullText | None (default: PubMed Central)
 
 
 def build_pipeline(
@@ -86,6 +90,29 @@ def build_pipeline(
     def triage_node(state: ArticleState) -> dict:
         report, usage = triage.run(state["article"], codebook, triage_llm)
         return {"triage": report, "usage": [usage]}
+
+    def fulltext_node(state: ArticleState) -> dict:
+        art = state["article"]
+        wanted = opt.fulltext == "always" or (
+            opt.fulltext == "when_needed" and not state["triage"].enough_information
+        )
+        if not wanted:
+            return {"fulltext_info": {"used": False, "reason": "not needed" if opt.fulltext != "never" else "off"}}
+        if not art.pmcid:
+            return {"fulltext_info": {"used": False, "reason": "no PMCID"}}
+        from adrd_review.tools.pmc import excerpt, fetch_fulltext
+
+        try:
+            ft = (opt.fulltext_fetcher or fetch_fulltext)(art)
+        except Exception as e:  # full text is a bonus: never fail the article over it
+            return {"fulltext_info": {"used": False, "reason": f"fetch failed: {type(e).__name__}"}}
+        if ft is None:
+            return {"fulltext_info": {"used": False, "reason": "no PMC full text", "pmcid": art.pmcid}}
+        text = excerpt(ft, opt.fulltext_max_chars)
+        return {
+            "article": art.model_copy(update={"fulltext": text}),
+            "fulltext_info": {"used": True, "pmcid": ft.pmcid, "chars": len(text), "license": ft.license},
+        }
 
     def fan_out_screening(state: ArticleState) -> list[Send]:
         return [Send("screen_reviewer", {"article": state["article"], "reviewer_id": r.id}) for r in reviewers]
@@ -265,6 +292,7 @@ def build_pipeline(
     g = StateGraph(ArticleState)
     for name, fn in [
         ("triage", triage_node),
+        ("fulltext", fulltext_node),
         ("screen_reviewer", screen_reviewer),
         ("screen_consensus", screen_consensus),
         ("screen_debate", screen_debate),
@@ -282,7 +310,8 @@ def build_pipeline(
         g.add_node(name, fn)
 
     g.add_edge(START, "triage")
-    g.add_conditional_edges("triage", fan_out_screening, ["screen_reviewer"])
+    g.add_edge("triage", "fulltext")
+    g.add_conditional_edges("fulltext", fan_out_screening, ["screen_reviewer"])
     g.add_edge("screen_reviewer", "screen_consensus")
     g.add_conditional_edges("screen_consensus", route_screen_consensus, ["screen_debate", "screen_adjudicate", "screen_checks"])
     g.add_edge("screen_debate", "screen_consensus")

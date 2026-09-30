@@ -32,6 +32,7 @@ class Article(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     source: str = "pubmed"
     fetched_at: str | None = None
+    fulltext: str | None = None  # PubMed Central excerpt, attached by the pipeline when used
 
     @property
     def has_abstract(self) -> bool:

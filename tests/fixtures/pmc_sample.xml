@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+<!-- Synthetic PubMed Central JATS response for offline tests. Not a real article. -->
+<pmc-articleset><article xmlns:ali="http://www.niso.org/schemas/ali/1.0/">
+  <front><article-meta>
+    <permissions><license license-type="open-access"><ali:license_ref>https://creativecommons.org/licenses/by/4.0/</ali:license_ref></license></permissions>
+  </article-meta></front>
+  <body>
+    <sec><title>Methods</title>
+      <p>We recruited 412 adults aged 65 and over from <italic>general practice</italic>.</p>
+      <sec><title>Reference standard</title><p>Dementia was diagnosed with DSM-IV criteria by a geriatrician.</p></sec>
+    </sec>
+    <sec><title>Results</title><p>The MMSE had sensitivity 0.81 at a cut-off of 24.</p></sec>
+    <sec><title>Acknowledgements</title><p>We thank the participants.</p></sec>
+    <sec><title>Authors' contributions</title><p>AB wrote the paper.</p></sec>
+  </body>
+</article></pmc-articleset>

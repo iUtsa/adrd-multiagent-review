@@ -27,6 +27,8 @@ def render_article(article: Article) -> str:
     lines.append("")
     lines.append("Abstract:")
     lines.append(article.abstract if article.has_abstract else "(no abstract available)")
+    if article.fulltext:
+        lines += ["", "Full text (excerpt from PubMed Central):", article.fulltext]
     return "\n".join(lines)
 
 
@@ -55,7 +57,7 @@ def render_dimensions(codebook: Codebook) -> str:
 
 def check_quotes(evidence: list[EvidenceSpan], article: Article) -> list[str]:
     """Warnings for quotes that do not appear in the article (the Verifier's quick check)."""
-    haystack = " ".join(f"{article.title} {article.abstract}".split()).lower()
+    haystack = " ".join(f"{article.title} {article.abstract} {article.fulltext or ''}".split()).lower()
     return [
         f"quote not found in article: {e.quote[:80]!r}"
         for e in evidence

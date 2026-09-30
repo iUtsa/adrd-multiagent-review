@@ -222,3 +222,14 @@ def test_run_configs_parse():
         assert [r.id for r in reviewers] == ["A", "B", "C"] and all(r.persona for r in reviewers)
     gem = load_run_config(ROOT / "configs/runs/E2_gemini.yaml").reviewer_configs()
     assert len({r.model.model for r in gem}) == 3  # three different Gemini versions
+
+
+def test_repeats_do_not_share_cached_answers(tmp_path):
+    cfg = ModelConfig(provider="google", model="m")
+    chat = StubChat([good_output(), good_output(), good_output()])
+    r0 = LangChainLLM(cfg, chat_model=chat, cache=ResponseCache(tmp_path))
+    r1 = LangChainLLM(cfg, chat_model=chat, cache=ResponseCache(tmp_path), namespace="repeat-1")
+    r0.structured(ScreeningAnswer, "s", "u", role="screening")
+    r0.structured(ScreeningAnswer, "s", "u", role="screening")  # cached
+    r1.structured(ScreeningAnswer, "s", "u", role="screening")  # different repeat: calls the model
+    assert chat.calls == 2

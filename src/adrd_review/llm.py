@@ -83,8 +83,9 @@ class ResponseCache:
             self.dir.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def key(config: ModelConfig, schema: type[BaseModel], system: str, user: str) -> str:
+    def key(config: ModelConfig, schema: type[BaseModel], system: str, user: str, namespace: str = "") -> str:
         payload = {
+            "namespace": namespace,  # e.g. 'repeat-2': repeats never share answers
             "provider": config.provider,
             "model": config.model,
             "temperature": config.temperature,
@@ -167,7 +168,15 @@ def make_chat_model(config: ModelConfig):
 
 
 class LangChainLLM:
-    def __init__(self, config: ModelConfig, chat_model=None, cache: ResponseCache | None = None, max_attempts: int = 3):
+    def __init__(
+        self,
+        config: ModelConfig,
+        chat_model=None,
+        cache: ResponseCache | None = None,
+        max_attempts: int = 3,
+        namespace: str = "",
+    ):
+        self.namespace = namespace
         self.config = config
         self.chat = chat_model if chat_model is not None else make_chat_model(config)
         self.cache = cache or ResponseCache(None)
@@ -181,7 +190,7 @@ class LangChainLLM:
         return (tokens_in * c.price_in_per_mtok + tokens_out * c.price_out_per_mtok) / 1e6
 
     def structured(self, schema: type[T], system: str, user: str, role: str) -> LLMResult[T]:
-        key = ResponseCache.key(self.config, schema, system, user)
+        key = ResponseCache.key(self.config, schema, system, user, self.namespace)
         hit = self.cache.get(key)
         if hit:
             usage = Usage(**hit["usage"])
@@ -245,9 +254,10 @@ class FakeLLM:
         return LLMResult(parsed, Usage(role=role, model=self.config.label, input_tokens=tokens_in, output_tokens=50))
 
 
-def build_llm(config: ModelConfig, cache_dir: str | Path | None = None, codebook=None) -> LLM:
+def build_llm(config: ModelConfig, cache_dir: str | Path | None = None, codebook=None, namespace: str = "") -> LLM:
+    """`namespace` separates cache entries, e.g. per repeat, so repeats call the model again."""
     if config.provider == "fake":
         from adrd_review.fake_model import default_responders
 
         return FakeLLM(config, default_responders(codebook, style=config.model))
-    return LangChainLLM(config, cache=ResponseCache(cache_dir))
+    return LangChainLLM(config, cache=ResponseCache(cache_dir), namespace=namespace)
