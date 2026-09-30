@@ -100,7 +100,7 @@ Writes `data/gold/gold.csv`, `data/gold/gold_meta.json` (provenance and limitati
 
 1. Put the file in `data/gold/` (git-ignored).
 2. Replace `configs/codebook.yaml` with the human codebook (same structure; keep label IDs identical to the values in the gold file).
-3. Convert the file to the standard format above (a small one-off script, since the column names will differ). If it has DOIs or titles instead of PMIDs, use `python -m adrd_review.tools.pubmed lookup`.
+3. Convert it with the converter: copy `configs/gold_mapping.example.yaml` to `configs/gold_mapping.yaml`, set the column names and map the file's values to codebook labels, then run `python -m adrd_review.convert_gold configs/gold_mapping.yaml`. It looks up PMIDs from DOIs or titles, lists every value it cannot map (and writes nothing until all are mapped), and validates the result against the codebook.
 4. Check it: the loader lists any problems.
    ```bash
    python -c "from adrd_review.codebook import load_codebook; from adrd_review.gold import load_gold, summarize; print(summarize(load_gold('data/gold/gold.csv', load_codebook())))"

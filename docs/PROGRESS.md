@@ -4,6 +4,29 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-09-30 — Everything that can be built without a key is built
+
+| Item | Status | Where |
+|---|---|---|
+| Repeats that really call the model again (`--repeat N`) | ✅ | runner, [ANALYSIS.md](ANALYSIS.md) |
+| Results table over repeats + run-to-run κ; only comparable runs averaged | ✅ | `eval/aggregate.py` |
+| Error-analysis spreadsheet with category drop-down + summary | ✅ | `eval/errors.py` |
+| Figures: conditions; accuracy vs human effort (validated palette, CSV twins) | ✅ | `eval/figures.py` |
+| Retrieval check of the professor's search | ✅ | `eval/retrieval.py` |
+| PubMed Central full text (`fulltext: never / when_needed / always`) | ✅ | `tools/pmc.py`, [TOOLS.md](TOOLS.md) |
+| Reviewer weights from calibration (log-odds of accuracy) | ✅ | `eval/weights.py`, `weights_file:` |
+| Cost estimator + Gemini prices | ✅ | `eval/cost.py`, `configs/prices.yaml` |
+| Converter for the professor's spreadsheet | ✅ | `convert_gold.py`, `configs/gold_mapping.example.yaml` |
+
+- **Bug caught by a test:** the full-text parser dropped any section whose title began with "Reference", including "Reference standard" (how dementia was confirmed, rule I2). Fixed; only a section titled exactly "References" is dropped now.
+- **Found while pricing:** `gemini-3.1-pro-preview` (adjudicator) has no free tier; the E3/E4/D Gemini configs now say to use `gemini-3.8-flash` on a free key.
+- Pre-run test-set cost estimate: ~$30–40 (upper bound $73 without shared calls).
+- Every run records a prompt/code fingerprint; the freeze also locks the weights file.
+- Stand-in results: aggregation of 3 repeats × 5 conditions (SD 0, repeat κ 1.0, as expected for a deterministic stand-in); weighted panel precision 0.435 → 0.667 in-sample; full text fetched for the 5 calibration articles with a PMCID; retrieval 0/90 (placeholder is 1971–2014, outside the query's 2015–2025).
+- **Tests: 105 pass** (+1 live PubMed test, opt-in).
+
+---
+
 ## 2026-09-30 — Days 6–8: every remaining agent built
 
 All planned agents now exist; each has a build document in [agents/](agents/README.md) and a generated exact prompt.

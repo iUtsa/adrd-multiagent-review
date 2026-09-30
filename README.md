@@ -14,7 +14,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design, diagrams a
 
 ## Status
 
-**All agents are built** (Days 1–8 of the [10-day plan](docs/10_DAY_PLAN.md)): PubMed tool, codebook, gold standard, frozen split, scorer, and every agent (triage, 3-reviewer panel, extraction, annotation, adjudicator, verifier, human review, Codebook Curator, debate) in one LangGraph pipeline covering E1–E4 and D. Everything runs today with a stand-in model. Models: **Gemini** (professor's licence), see [docs/MODELS.md](docs/MODELS.md). **Next: real Gemini runs** once access is set up ([docs/RUNNING_EXPERIMENTS.md](docs/RUNNING_EXPERIMENTS.md)). **The gold standard and codebook are currently a public placeholder** (Cochrane dementia-screening decisions from CLEF 2017) until the professor's data arrives; see [docs/GOLD_STANDARD.md](docs/GOLD_STANDARD.md). Progress log: [docs/PROGRESS.md](docs/PROGRESS.md).
+**All agents are built** (Days 1–8 of the [10-day plan](docs/10_DAY_PLAN.md)): PubMed tool, codebook, gold standard, frozen split, scorer, and every agent (triage, 3-reviewer panel, extraction, annotation, adjudicator, verifier, human review, Codebook Curator, debate) in one LangGraph pipeline covering E1–E4 and D. Everything runs today with a stand-in model. Models: **Gemini** (professor's licence), see [docs/MODELS.md](docs/MODELS.md). The analysis tools are built too (repeats, results table, figures, error analysis, reviewer weights, cost, retrieval check, PubMed Central full text, converter for the professor's file). **Next: real Gemini runs** once access is set up ([docs/RUNNING_EXPERIMENTS.md](docs/RUNNING_EXPERIMENTS.md)). **The gold standard and codebook are currently a public placeholder** (Cochrane dementia-screening decisions from CLEF 2017) until the professor's data arrives; see [docs/GOLD_STANDARD.md](docs/GOLD_STANDARD.md). Progress log: [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Quick start
 
@@ -44,6 +44,7 @@ python -m adrd_review.graph.runner configs/runs/E4_fake.yaml   # run the full pr
 | [docs/agents/](docs/agents/README.md) | **Build document for every agent** + exact prompts |
 | [docs/MODELS.md](docs/MODELS.md) | Which Gemini model does what; Gemini access setup; optional Groq |
 | [docs/SEARCH.md](docs/SEARCH.md) | The professor's PubMed search |
+| [docs/ANALYSIS.md](docs/ANALYSIS.md) | Repeats, results table, figures, error analysis, weights, cost, retrieval check |
 | [docs/EVALUATION.md](docs/EVALUATION.md) | How runs are scored, every metric, baseline results |
 | [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md) | Free local models with Ollama (on standby) |
 
@@ -67,10 +68,15 @@ src/adrd_review/
   gold.py                 load + validate the gold standard
   split.py                make + freeze the calibration/test split
   tools/pubmed.py         PubMed search / fetch / lookup
+  tools/pmc.py            PubMed Central full text
   agents/                 triage, screening, extraction, annotation, adjudicator, verifier, debate, human, curator
   graph/                  state.py, pipeline.py (LangGraph), runner.py
   eval/metrics.py         P/R/F1, Cohen & Fleiss kappa, WSS, WSS@95, cost
   eval/score.py           score a predictions file against the gold standard
+  eval/aggregate.py       results table over repeats   eval/figures.py  figures
+  eval/errors.py          error-analysis sheet         eval/weights.py  reviewer weights
+  eval/cost.py            cost estimate                eval/retrieval.py search recall
+  convert_gold.py         convert the professor's spreadsheet
 data/                     gold standard, corpus, run outputs (git-ignored)
 scripts/                  build_placeholder_gold.py, score_baselines.py, render_prompts.py, check_ollama.py
 notebooks/                analysis

@@ -1,0 +1,39 @@
+# How to read the professor's gold-standard spreadsheet. Copy to configs/gold_mapping.yaml,
+# change the column names and value maps to match the real file, then run:
+#   python -m adrd_review.convert_gold configs/gold_mapping.yaml
+# Every value not listed under `values` is reported, never guessed.
+
+file: data/gold/professor_gold.xlsx     # .xlsx, .xls or .csv
+sheet: null                             # sheet name for Excel files (null = first sheet)
+output: data/gold/gold.csv              # standard gold format (docs/GOLD_STANDARD.md)
+source_label: professor-2026            # written into the `source` column
+
+id:
+  pmid: PMID                            # column with PubMed IDs (null if the file has none)
+  doi: DOI                              # used to look up a PMID when it is missing
+  title: Title                          # last resort: exact-title lookup on PubMed
+
+screening:
+  column: Final decision
+  values: {Include: include, Included: include, Yes: include, Exclude: exclude, Excluded: exclude, No: exclude}
+
+fulltext:                               # optional: decision after full-text reading
+  column: null
+  values: {}
+
+dimensions:                             # one entry per codebook dimension present in the file
+  instrument:
+    column: Screening instrument
+    separator: ";"                      # how several labels are separated in a cell
+    values:                             # file value -> codebook label ID
+      MMSE: MMSE
+      Mini-Mental State Examination: MMSE
+      MoCA: MoCA
+      Mini-Cog: Mini-Cog
+      IQCODE: IQCODE
+    ignore: [NA, "N/A", "-", none]      # treated as "no label"
+
+reviewers:                              # optional: each reviewer's own screening answer
+  - {id: r1, screening: Reviewer 1}
+  - {id: r2, screening: Reviewer 2}
+  - {id: r3, screening: Reviewer 3}

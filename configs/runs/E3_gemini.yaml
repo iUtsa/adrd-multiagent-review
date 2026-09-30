@@ -29,6 +29,8 @@ panel:
     model: {provider: google, model: gemini-3.5-flash, requests_per_minute: 10}
 
 # ---- added for E3 ----
+# FREE-TIER KEY? gemini-3.1-pro-preview (the adjudicator) has NO free tier. On a free key, change
+# the adjudicator model below to gemini-3.8-flash (see docs/MODELS.md).
 adjudicator: {provider: google, model: gemini-3.1-pro-preview, max_tokens: 2048, requests_per_minute: 5}
 escalate_below: 0.6
 verifier:

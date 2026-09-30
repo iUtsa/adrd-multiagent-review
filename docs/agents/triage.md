@@ -8,7 +8,7 @@ Decides whether an article's title and abstract contain enough information to ap
 
 ## 2. Where it sits
 
-First step for every article: `START → triage → screening`. Its report is stored in the article's state and in `decisions.jsonl`. At present the pipeline records the report but does not yet branch on it; the full-text branch is added with the PMC tool.
+First step for every article: `START → triage → screening`. Its report is stored in the article's state and in `decisions.jsonl`. With `fulltext: when_needed` in the run config, a report saying the abstract is not enough makes the pipeline fetch the PubMed Central full text (if the article has a PMCID) before the reviewers run ([TOOLS.md](../TOOLS.md)).
 
 ## 3. Inputs
 
@@ -65,9 +65,9 @@ python -c "import json; [print(json.loads(l)['pmid'], json.loads(l)['triage']) f
 
 ## 12. Limitations and planned changes
 
-- Full-text fetch from PubMed Central when `enough_information` is false (planned with the PMC tool).
+- Full-text fetch from PubMed Central when `enough_information` is false: built (`fulltext: when_needed`); off by default until the professor confirms the human protocol.
 - Not yet scored against a reference; once real runs exist, compare its "not enough information" rate with the no-abstract and error-analysis results.
 
 ## 13. Change log
 
-- 2026-09-30: built (Day 4).
+- 2026-09-30: built (Day 4). Full-text branch added.

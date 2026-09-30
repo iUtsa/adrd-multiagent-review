@@ -93,6 +93,9 @@ class RunConfig(BaseModel):
     # (triage says the abstract is not enough), or always. Excerpt capped at fulltext_max_chars.
     fulltext: Literal["never", "when_needed", "always"] = "never"
     fulltext_max_chars: int = 12000
+    # Reviewer weights computed on a calibration run (python -m adrd_review.eval.weights);
+    # overrides the `weight:` of each panel reviewer it lists.
+    weights_file: str | None = None
 
     def reviewer_configs(self) -> list[ReviewerConfig]:
         if self.panel:
@@ -126,13 +129,16 @@ def build_graph(config: RunConfig, codebook: Codebook, gold: list[GoldRecord], c
     for role in ("triage", "extraction"):
         if role not in config.roles:
             raise ValueError(f"Config needs roles.{role}")
+    learned = {}
+    if config.weights_file:
+        learned = {rid: s["weight"] for rid, s in json.loads(Path(config.weights_file).read_text())["reviewers"].items()}
     reviewers = [
         Reviewer(
             id=rc.id,
             llm=llm_for(rc.model),
             annotation_llm=llm_for(rc.annotation_model or rc.model),
             persona=rc.persona,
-            weight=rc.weight,
+            weight=learned.get(rc.id, rc.weight),
         )
         for rc in config.reviewer_configs()
     ]

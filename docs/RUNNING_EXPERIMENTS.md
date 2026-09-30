@@ -36,7 +36,16 @@ Accepted changes go into `configs/codebook.yaml` with a new version; repeat step
 
 **4. Decide on debate (task 8.2):** keep D only if it beats E3 on calibration.
 
-**5. Set reviewer weights (optional):** from each reviewer's calibration accuracy, written into the configs as `weight:`.
+**5. Set reviewer weights (optional):**
+```bash
+python -m adrd_review.eval.weights data/runs/E2_gemini/<calibration timestamp>
+```
+then add `weights_file: configs/weights/E2_gemini.json` to the panel configs.
+
+**5b. Estimate the cost of the test runs:**
+```bash
+python -m adrd_review.eval.cost data/runs/E4_gemini/<timestamp> --articles 228 --repeats 3
+```
 
 **6. Freeze (task 8.3)**
 ```bash
@@ -47,9 +56,20 @@ The freeze records hashes of the config, codebook, agent code (prompts), gold fi
 
 **7. Test runs (228 articles), 3 repeats each**
 ```bash
-for rep in 1 2 3; do for c in E1 E2 E3 E4 D; do python -m adrd_review.graph.runner configs/runs/${c}_gemini.yaml --part test; done; done
+for rep in 1 2 3; do for c in E1 E2 E3 E4 D; do
+  python -m adrd_review.graph.runner configs/runs/${c}_gemini.yaml --part test --repeat $rep
+done; done
 ```
-Identical requests are served from the cache, so for real repeats either clear `data/cache/llm/` between repeats or use a temperature above 0 (decided and documented before the freeze).
+`--repeat` makes each repeat call the model again; within one repeat, conditions share identical calls (see [ANALYSIS.md](ANALYSIS.md)).
+
+**8. Results, figures, error analysis, retrieval**
+```bash
+python -m adrd_review.eval.aggregate --part test
+python -m adrd_review.eval.figures conditions --part test
+python -m adrd_review.eval.figures effort data/runs/E3_gemini/<timestamp> --mark data/runs/E4_gemini/<timestamp>
+python -m adrd_review.eval.errors export data/runs/E4_gemini/<timestamp>
+python -m adrd_review.eval.retrieval
+```
 
 ## What each report contains
 

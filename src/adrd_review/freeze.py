@@ -55,6 +55,7 @@ def fingerprint(config_path: str | Path) -> dict:
         "prompts_sha256": prompts_sha(),
         "gold_sha256": _sha(gold),
         "split_sha256": _sha(split),
+        "weights_sha256": _sha(cfg["weights_file"]) if cfg.get("weights_file") else None,
     }
 
 
@@ -87,6 +88,7 @@ def check(config_path: str | Path) -> list[str]:
     frozen = json.loads(path.read_text())
     now = fingerprint(config_path)
     return [f"{k} changed since the freeze" for k in now if k.endswith("sha256") and now[k] != frozen.get(k)]
+
 
 
 def main(argv: list[str] | None = None) -> int:

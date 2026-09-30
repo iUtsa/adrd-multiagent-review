@@ -108,3 +108,28 @@ RUN_NETWORK_TESTS=1 python -m pytest tests/      # also runs one live PubMed tes
 ```
 
 The offline tests use `tests/fixtures/pubmed_sample.xml`, a small made-up PubMed response covering the tricky cases: structured abstracts, italic tags in titles, no abstract, unusual dates, reference-list IDs, and book records.
+
+
+---
+
+## PubMed Central full-text tool — `tools/pmc.py`
+
+Fetches an article's full text from PubMed Central (free, no key) when it has a PMCID, and keeps the body by section (Methods, Results, …). Back matter (references, acknowledgements, funding, author contributions, declarations) is left out. A section called "Reference standard" is **kept**: only a section titled exactly "References" is dropped (this was a bug caught by the tests).
+
+```bash
+python -m adrd_review.tools.pmc 23172761          # by PMID; prints sections, size, licence
+```
+
+**In the pipeline** (run config):
+
+| `fulltext:` | Behaviour |
+|---|---|
+| `never` (default) | Abstract only, like title/abstract screening by the human team |
+| `when_needed` | Fetch when triage says the abstract is not enough and the article has a PMCID |
+| `always` | Fetch for every article with a PMCID |
+
+The agents then see an excerpt (default 12,000 characters, cut at a sentence end; `fulltext_max_chars:`) after the abstract, and quotes may come from it (`source: fulltext`). A failed fetch never fails the article; the outcome is recorded per article in `fulltext_info` (`used`, or why not: off / not needed / no PMCID / no PMC full text / fetch failed). Cached in `data/fulltext/`.
+
+Which setting to use for the study depends on question 5 for the professor (were the human reviewers screening abstracts only?). On the 40 calibration articles of the placeholder, 5 have PubMed Central full text (older papers rarely do).
+
+Tests: `tests/test_fulltext.py`.

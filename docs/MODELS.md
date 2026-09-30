@@ -50,6 +50,10 @@ The code supports both; which one the licence is decides the setup:
 | A **Google Cloud / Vertex AI** project | Run `gcloud auth application-default login` once, then add `extra: {vertexai: true, project: <project-id>, location: us-central1}` to each model in the run config |
 | A **Gemini app subscription** (gemini.google.com, Gemini for Workspace) | This does **not** include API access. Ask for an AI Studio key or a Vertex AI project, or use the free AI Studio tier |
 
+## Free tier and prices
+
+Prices are in `configs/prices.yaml` (checked 2026-09-30). **`gemini-3.1-pro-preview` has no free tier**: on a free key, set the E3/E4/D adjudicator to `gemini-3.8-flash` (each Gemini config says so at the adjudicator line). All Flash and Flash-Lite models have a free tier. Estimated test-run cost: about $30–40 ([ANALYSIS.md](ANALYSIS.md#cost-estimate-task-84)).
+
 ## Budget notes
 
 - Calls per article: triage 1, screening 1 per reviewer, extraction 1 (includes only), annotation 1 per reviewer (includes only). A 3-reviewer run on 40 articles is about 250 calls; on 228 test articles about 1,400.

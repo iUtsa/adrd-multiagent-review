@@ -1,5 +1,7 @@
 # Evaluation (the scorer)
 
+For the results table, figures, error analysis, reviewer weights, cost and retrieval check, see [ANALYSIS.md](ANALYSIS.md).
+
 How agent output is compared with the gold standard. Code: `src/adrd_review/eval/`.
 
 ---
