@@ -4,6 +4,24 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-09-30 — Day 3 (scorer) done, a day early
+
+| Task | Status |
+|---|---|
+| 3.1 Metrics | ✅ `eval/metrics.py`: precision, recall, F1, specificity, Cohen's κ, Fleiss' κ, multi-label P/R/F1/κ, WSS, WSS@95, cost/time summary |
+| 3.2 Tests | ✅ Hand-worked answers + matches scikit-learn and statsmodels on random data |
+| 3.3 Score a known system | ✅ Substitute: old 2-agent outputs not available yet, so validated end to end on 4 non-AI baselines |
+| 3.4 Human Fleiss' κ | ⏸ Code ready; placeholder gold has no per-reviewer answers |
+
+- `eval/score.py`: compares a predictions CSV (same format as gold) with the gold file on the calibration or test set; stops if any prediction is missing; warns when scoring the test set.
+- `scripts/score_baselines.py`: keyword baseline on calibration = recall 0.769, precision 0.435, κ 0.240, instrument F1 0.848, setting F1 0. This is the floor agents must beat. Details in [EVALUATION.md](EVALUATION.md).
+- `gold.py` now also reads an optional `score` column (for WSS@95).
+- `.vscode/settings.json` points VS Code at the project's `.venv`.
+- Ollama on standby by decision (disk). Freed 1.8 GB of caches; 2.3 GB free.
+- **Tests: 46 pass** (+1 live PubMed test, opt-in).
+
+---
+
 ## 2026-09-30 — Days 1 and 2 closed
 
 | Task | Status |

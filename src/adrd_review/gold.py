@@ -8,7 +8,10 @@ Standard file format (CSV, one row per article), documented in docs/GOLD_STANDAR
     <dimension> optional  one column per codebook annotation dimension; several labels
                           separated by ';'; empty = no label
     <field>__<reviewer>   optional per-reviewer answers, e.g. screening__r1, instrument__r2
+    score       optional  0-1 likelihood of "include" (agent predictions; used for WSS@95)
     source      optional  free text: where the row came from
+
+Agent predictions use this same format, so gold and predictions load the same way.
 
 Any source (the professor's file, the CLEF placeholder) is converted to this format once,
 so nothing downstream depends on where the gold standard came from.
@@ -47,6 +50,7 @@ class GoldRecord(BaseModel):
     fulltext: Decision | None = None
     labels: dict[str, list[str]] = Field(default_factory=dict)
     reviewers: dict[str, dict[str, str]] = Field(default_factory=dict)
+    score: float | None = None
     source: str | None = None
 
 
@@ -118,6 +122,16 @@ def load_gold(path: str | Path, codebook: Codebook) -> list[GoldRecord]:
             if row[col].strip():
                 reviewers.setdefault(reviewer, {})[field] = row[col].strip()
 
+        score = None
+        if "score" in df.columns and row["score"].strip():
+            try:
+                score = float(row["score"])
+            except ValueError:
+                problems.append(f"line {line} (PMID {pmid}): score {row['score']!r} is not a number")
+            else:
+                if not 0 <= score <= 1:
+                    problems.append(f"line {line} (PMID {pmid}): score {score} is outside 0-1")
+
         records.append(
             GoldRecord(
                 pmid=pmid,
@@ -125,6 +139,7 @@ def load_gold(path: str | Path, codebook: Codebook) -> list[GoldRecord]:
                 fulltext=fulltext,
                 labels=labels,
                 reviewers=reviewers,
+                score=score,
                 source=row["source"].strip() or None if "source" in df.columns else None,
             )
         )
@@ -144,6 +159,8 @@ def write_gold(records: list[GoldRecord], path: str | Path, dimensions: list[str
         row = {"pmid": r.pmid, "screening": r.screening, "fulltext": r.fulltext or ""}
         for dim in dimensions:
             row[dim] = SEP.join(r.labels.get(dim, []))
+        if any(x.score is not None for x in records):
+            row["score"] = "" if r.score is None else r.score
         row["source"] = r.source or ""
         rows.append(row)
     Path(path).parent.mkdir(parents=True, exist_ok=True)

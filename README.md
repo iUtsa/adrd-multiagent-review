@@ -14,7 +14,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design, diagrams a
 
 ## Status
 
-Building. Days 1–2 of the [10-day plan](docs/10_DAY_PLAN.md) are done: Python setup, PubMed tool, codebook, gold standard and frozen split. **The gold standard and codebook are currently a public placeholder** (Cochrane dementia-screening decisions from CLEF 2017) until the professor's data arrives; see [docs/GOLD_STANDARD.md](docs/GOLD_STANDARD.md). Progress log: [docs/PROGRESS.md](docs/PROGRESS.md).
+Building. Days 1–3 of the [10-day plan](docs/10_DAY_PLAN.md) are done: Python setup, PubMed tool, codebook, gold standard, frozen split and the scorer. Next: the first agents (Day 4). **The gold standard and codebook are currently a public placeholder** (Cochrane dementia-screening decisions from CLEF 2017) until the professor's data arrives; see [docs/GOLD_STANDARD.md](docs/GOLD_STANDARD.md). Progress log: [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Quick start
 
@@ -26,6 +26,7 @@ cp .env.example .env        # add API keys when available
 
 python scripts/build_placeholder_gold.py   # gold standard + 268 articles into data/
 python -m pytest                           # run the tests
+python scripts/score_baselines.py          # score the non-AI baselines
 ```
 
 ## Docs
@@ -37,7 +38,8 @@ python -m pytest                           # run the tests
 | [docs/PROGRESS.md](docs/PROGRESS.md) | What has been built and how it was checked |
 | [docs/TOOLS.md](docs/TOOLS.md) | How to use each tool (PubMed, ...) |
 | [docs/GOLD_STANDARD.md](docs/GOLD_STANDARD.md) | Gold file format, the placeholder, the frozen split, how to swap in the real data |
-| [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md) | Free local models with Ollama |
+| [docs/EVALUATION.md](docs/EVALUATION.md) | How runs are scored, every metric, baseline results |
+| [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md) | Free local models with Ollama (on standby) |
 
 ## Layout
 
@@ -53,9 +55,10 @@ src/adrd_review/
   tools/pubmed.py         PubMed search / fetch / lookup
   agents/                 one module per agent
   graph/                  LangGraph state, subgraphs, pipeline
-  eval/                   metrics and reports
+  eval/metrics.py         P/R/F1, Cohen & Fleiss kappa, WSS, WSS@95, cost
+  eval/score.py           score a predictions file against the gold standard
 data/                     gold standard, corpus, run outputs (git-ignored)
-scripts/                  build_placeholder_gold.py, check_ollama.py
+scripts/                  build_placeholder_gold.py, score_baselines.py, check_ollama.py
 notebooks/                analysis
 tests/                    pytest tests (+ fixtures/)
 docs/                     design, plan, progress, tool docs
