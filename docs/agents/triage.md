@@ -4,7 +4,7 @@ Code: `src/adrd_review/agents/triage.py` · Exact prompt: [prompts/triage.md](pr
 
 ## 1. Purpose
 
-Decides whether an article's title and abstract contain enough information to apply each inclusion rule. It does **not** decide include or exclude. It addresses the earlier finding that *variable abstract reporting quality* made classification inconsistent: triage makes that visible per article and will trigger a full-text fetch from PubMed Central (planned) when the abstract is too thin.
+Decides whether an article's title and abstract contain enough information to apply each inclusion rule. It does **not** decide include or exclude. It addresses the earlier finding that *variable abstract reporting quality* made classification inconsistent: triage makes that visible per article and can trigger a full-text fetch from PubMed Central when the abstract is too thin (`fulltext: when_needed`).
 
 ## 2. Where it sits
 
