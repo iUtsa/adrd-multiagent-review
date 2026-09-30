@@ -1,0 +1,38 @@
+[project]
+name = "adrd-review"
+version = "0.1.0"
+description = "LangGraph multi-agent scoping review of ADRD screening literature"
+requires-python = ">=3.11"
+dependencies = [
+    # agent orchestration
+    "langgraph",
+    "langgraph-checkpoint-sqlite",
+    # model connectors (one per AI company)
+    "langchain-core",
+    "langchain-anthropic",
+    "langchain-google-genai",
+    "langchain-openai",
+    # data + config
+    "pydantic>=2",
+    "pyyaml",
+    "python-dotenv",
+    "requests",
+    "pandas",
+    "openpyxl",
+    # evaluation
+    "scikit-learn",
+    "statsmodels",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
