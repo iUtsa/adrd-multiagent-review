@@ -1,0 +1,90 @@
+<?xml version="1.0" ?>
+<!-- Synthetic PubMed efetch response for offline tests. Not real articles. -->
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation Status="MEDLINE" Owner="NLM">
+      <PMID Version="1">11111111</PMID>
+      <Article PubModel="Print">
+        <Journal>
+          <Title>Journal of Test Neurology</Title>
+          <JournalIssue CitedMedium="Internet">
+            <PubDate><Year>2024</Year><Month>Mar</Month></PubDate>
+          </JournalIssue>
+        </Journal>
+        <ArticleTitle>Screening with the <i>MoCA</i> in rural older adults.</ArticleTitle>
+        <ELocationID EIdType="doi" ValidYN="Y">10.9999/elocation.doi</ELocationID>
+        <Abstract>
+          <AbstractText Label="BACKGROUND" NlmCategory="BACKGROUND">Dementia is often
+            undiagnosed.</AbstractText>
+          <AbstractText Label="METHODS" NlmCategory="METHODS">We screened 500 adults aged 65+
+            with the MoCA (cut-off &lt;26).</AbstractText>
+          <AbstractText Label="RESULTS" NlmCategory="RESULTS">Sensitivity was 0.9.</AbstractText>
+        </Abstract>
+        <AuthorList CompleteYN="Y">
+          <Author ValidYN="Y"><LastName>Rivera</LastName><ForeName>Ana</ForeName><Initials>A</Initials></Author>
+          <Author ValidYN="Y"><LastName>Okafor</LastName><Initials>C</Initials></Author>
+          <Author ValidYN="Y"><CollectiveName>Test Dementia Consortium</CollectiveName></Author>
+        </AuthorList>
+        <Language>eng</Language>
+        <PublicationTypeList>
+          <PublicationType UI="D016428">Journal Article</PublicationType>
+        </PublicationTypeList>
+      </Article>
+      <MeshHeadingList>
+        <MeshHeading><DescriptorName UI="D003704" MajorTopicYN="Y">Dementia</DescriptorName></MeshHeading>
+        <MeshHeading><DescriptorName UI="D008403" MajorTopicYN="N">Mass Screening</DescriptorName></MeshHeading>
+      </MeshHeadingList>
+      <KeywordList Owner="NOTNLM">
+        <Keyword MajorTopicYN="N">MoCA</Keyword>
+        <Keyword MajorTopicYN="N">rural health</Keyword>
+      </KeywordList>
+    </MedlineCitation>
+    <PubmedData>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">11111111</ArticleId>
+        <ArticleId IdType="doi">10.9999/test.doi.1</ArticleId>
+        <ArticleId IdType="pmc">PMC1234567</ArticleId>
+      </ArticleIdList>
+      <ReferenceList>
+        <Reference>
+          <Citation>A cited paper.</Citation>
+          <ArticleIdList>
+            <ArticleId IdType="doi">10.9999/cited.paper.doi</ArticleId>
+            <ArticleId IdType="pmc">PMC7654321</ArticleId>
+          </ArticleIdList>
+        </Reference>
+      </ReferenceList>
+    </PubmedData>
+  </PubmedArticle>
+
+  <PubmedArticle>
+    <MedlineCitation Status="PubMed-not-MEDLINE" Owner="NLM">
+      <PMID Version="1">22222222</PMID>
+      <Article PubModel="Print">
+        <Journal>
+          <Title>Test Letters in Aging</Title>
+          <JournalIssue>
+            <PubDate><MedlineDate>1998 Dec-1999 Jan</MedlineDate></PubDate>
+          </JournalIssue>
+        </Journal>
+        <ArticleTitle>A letter with no abstract.</ArticleTitle>
+        <ELocationID EIdType="doi" ValidYN="Y">10.9999/letter.doi</ELocationID>
+        <Language>eng</Language>
+        <PublicationTypeList>
+          <PublicationType UI="D016422">Letter</PublicationType>
+        </PublicationTypeList>
+      </Article>
+    </MedlineCitation>
+    <PubmedData>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">22222222</ArticleId>
+      </ArticleIdList>
+    </PubmedData>
+  </PubmedArticle>
+
+  <PubmedBookArticle>
+    <BookDocument>
+      <PMID Version="1">33333333</PMID>
+    </BookDocument>
+  </PubmedBookArticle>
+</PubmedArticleSet>

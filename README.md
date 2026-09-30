@@ -14,15 +14,41 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design, diagrams a
 
 ## Status
 
-Design phase. The human review is complete; the agent side is being built.
+Building (Day 2 of the [10-day plan](docs/10_DAY_PLAN.md)). The human review is complete. Done so far: Python setup and the PubMed tool. See [docs/PROGRESS.md](docs/PROGRESS.md).
+
+## Quick start
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env        # add API keys when available
+
+python -m pytest            # run the tests
+python -m adrd_review.tools.pubmed fetch --pmids 41503471   # download an article
+```
+
+## Docs
+
+| File | What it covers |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Full system design, diagrams, evaluation plan |
+| [docs/10_DAY_PLAN.md](docs/10_DAY_PLAN.md) | Day-by-day build schedule |
+| [docs/PROGRESS.md](docs/PROGRESS.md) | What has been built and how it was checked |
+| [docs/TOOLS.md](docs/TOOLS.md) | How to use each tool (PubMed, ...) |
 
 ## Layout
 
 ```
-configs/           codebook + panel configuration
-src/adrd_review/   agents, tools, LangGraph graphs, evaluation
-data/              gold standard, corpus, run outputs (git-ignored)
-notebooks/         analysis
-tests/
-docs/              architecture and design notes
+configs/                  codebook + panel configuration
+src/adrd_review/
+  schemas.py              shared records (Article, ...)
+  tools/pubmed.py         PubMed search / fetch / lookup
+  agents/                 one module per agent
+  graph/                  LangGraph state, subgraphs, pipeline
+  eval/                   metrics and reports
+data/                     gold standard, corpus, run outputs (git-ignored)
+notebooks/                analysis
+tests/                    pytest tests (+ fixtures/)
+docs/                     design, plan, progress, tool docs
 ```
