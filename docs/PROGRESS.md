@@ -4,6 +4,23 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-09-30 — Day 4 (first agents) built, two days early
+
+| Task | Status |
+|---|---|
+| 4.1 Shared state + answer forms | ✅ `graph/state.py`, `schemas.py` (Vote, Decision, Usage, and the four answer forms) |
+| 4.2 Model factory + cache | ✅ `llm.py`: Google, Anthropic, OpenAI, OpenRouter, Ollama via LangChain, plus a fake model; cache, retries, rate limit, cost |
+| 4.3 Agents | ✅ Triage, Screening reviewer, Extraction, Annotation reviewer; prompts generated from the codebook |
+| 4.4 LangGraph pipeline + runner | ✅ `graph/pipeline.py`, `graph/runner.py`; configs in `configs/runs/` |
+| 4.5 Run E1 on calibration with a real model | ⏳ Ran end to end with the fake model; real run waits for an API key (`E1_gemini.yaml` ready) |
+
+- Fake run, 40 calibration articles: 126 calls, 0 failures, 0 warnings, 6 output files; screening scores identical to the keyword baseline, as expected (same rules), confirming the plumbing.
+- Found keyword traps in the data: "MOCA" as a chemotherapy regimen and as an industrial chemical.
+- All five LangChain providers build with the configured settings (dummy keys, no network).
+- **Tests: 59 pass** (+1 live PubMed test, opt-in). Details: [AGENTS.md](AGENTS.md).
+
+---
+
 ## 2026-09-30 — Day 3 (scorer) done, a day early
 
 | Task | Status |

@@ -1,0 +1,13 @@
+# E1 pipeline with the FAKE keyword model: runs without any API key.
+# Use it to check the plumbing. Its scores are NOT results.
+name: E1_fake
+condition: E1
+description: Single reviewer agent, keyword stand-in model (plumbing check)
+part: calibration
+concurrency: 8
+
+roles:
+  triage:     {model: {provider: fake, model: keyword-rules}}
+  screening:  {model: {provider: fake, model: keyword-rules}}
+  extraction: {model: {provider: fake, model: keyword-rules}}
+  annotation: {model: {provider: fake, model: keyword-rules}}

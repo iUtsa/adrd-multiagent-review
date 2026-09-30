@@ -1,0 +1,30 @@
+# E1 pipeline on Gemini. Needs GOOGLE_API_KEY in .env (free key: aistudio.google.com).
+#   python -m adrd_review.graph.runner configs/runs/E1_gemini.yaml --limit 3   # quick check
+#   python -m adrd_review.graph.runner configs/runs/E1_gemini.yaml            # 40 calibration articles
+# requests_per_minute keeps us under free-tier limits; raise it on a paid key.
+# Prices are optional; add them (USD per million tokens) to get cost in the report.
+name: E1_gemini
+condition: E1
+description: Single reviewer agent on Gemini Flash
+part: calibration
+concurrency: 2
+
+gemini_flash: &gemini_flash
+  provider: google
+  model: gemini-3.8-flash
+  temperature: 0
+  max_tokens: 2048
+  requests_per_minute: 10
+
+gemini_lite: &gemini_lite
+  provider: google
+  model: gemini-3.5-flash-lite
+  temperature: 0
+  max_tokens: 1024
+  requests_per_minute: 10
+
+roles:
+  triage:     {model: *gemini_lite}
+  screening:  {model: *gemini_flash}
+  extraction: {model: *gemini_flash}
+  annotation: {model: *gemini_flash}
