@@ -281,8 +281,12 @@ class LangChainLLM:
                 rate_limited = "429" in str(e) or "rate limit" in str(e).lower() or "quota" in str(e).lower()
                 if rate_limited:
                     asked = retry_after_seconds(e)
-                    if asked is not None and asked > 600:
-                        break  # a daily limit: waiting will not help within this run
+                    # A long wait means a daily limit. By default give up on this call (the run can be
+                    # resumed later from the cache). ADRD_MAX_RATE_WAIT_SECONDS raises the patience for
+                    # unattended runs that should simply wait for the provider's budget to refill.
+                    patience = float(os.getenv("ADRD_MAX_RATE_WAIT_SECONDS", "600"))
+                    if asked is not None and asked > patience:
+                        break
                     time.sleep(asked + 1 if asked is not None else 15 * attempt)
                 else:
                     which += 1
