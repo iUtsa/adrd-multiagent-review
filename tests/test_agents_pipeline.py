@@ -137,7 +137,7 @@ class StubChat:
         self.outputs = list(outputs)
         self.calls = 0
 
-    def with_structured_output(self, schema, include_raw=False):
+    def with_structured_output(self, schema, include_raw=False, **kw):
         assert include_raw
         stub = self
 
@@ -281,3 +281,33 @@ def test_triage_enough_information_is_computed_not_trusted():
     assert not r.enough_information and r.missing == ["I2"]
     # nothing missing -> enough, whatever the model put in enough_information
     assert says(clearly_ineligible=False, missing=[], enough_information=False).enough_information
+
+
+def test_invalid_answer_switches_request_format(tmp_path):
+    """A rejected (non-rate-limit) answer is retried with a different structured-output method."""
+    used = []
+
+    class Chat:
+        def with_structured_output(self, schema, include_raw=False, **kw):
+            method = kw.get("method")
+
+            class R:
+                def invoke(self, messages):
+                    used.append(method)
+                    if method == "function_calling":
+                        raise RuntimeError("Error code: 400 - tool call validation failed")
+                    return good_output()
+
+            return R()
+
+    cfg = ModelConfig(provider="groq", model="m", structured_method="function_calling")
+    llm = LangChainLLM(cfg, chat_model=Chat(), cache=ResponseCache(None), max_attempts=3)
+    import adrd_review.llm as llm_mod
+
+    orig = llm_mod.time.sleep
+    llm_mod.time.sleep = lambda s: None
+    try:
+        res = llm.structured(ScreeningAnswer, "s", "u", role="screening")
+    finally:
+        llm_mod.time.sleep = orig
+    assert used == ["function_calling", None] and res.parsed.inclusion[0].status == "not_met"

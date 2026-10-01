@@ -201,27 +201,40 @@ class LangChainLLM:
 
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        method = {"method": self.config.structured_method} if self.config.structured_method else {}
-        runnable = self.chat.with_structured_output(schema, include_raw=True, **method)
+        # Ways to ask for structured output, in order of preference. If the model's answer is
+        # rejected as invalid (not a rate limit), the next attempt uses the next way: repeating
+        # the identical request at temperature 0 tends to repeat the identical mistake.
+        methods = list(dict.fromkeys([self.config.structured_method, None, "function_calling", "json_schema"]))
+        which = 0
+
+        def runnable_for(i: int):
+            m = methods[i % len(methods)]
+            return self.chat.with_structured_output(schema, include_raw=True, **({"method": m} if m else {}))
+
         messages = [SystemMessage(content=system), HumanMessage(content=user)]
         last_error: Any = None
         for attempt in range(1, self.max_attempts + 1):
             self.limiter.wait()
             start = time.monotonic()
             try:
-                out = runnable.invoke(messages)
-            except Exception as e:  # network, rate limit, provider error
+                out = runnable_for(which).invoke(messages)
+            except Exception as e:  # network, rate limit, provider error, invalid tool call
                 last_error = e
                 if attempt == self.max_attempts:
                     break
                 # Per-minute token limits (e.g. Groq free tier: 8,000 tokens/min) need a real pause.
                 rate_limited = "429" in str(e) or "rate limit" in str(e).lower() or "quota" in str(e).lower()
-                time.sleep(15 * attempt if rate_limited else min(30, 2**attempt))
+                if rate_limited:
+                    time.sleep(15 * attempt)
+                else:
+                    which += 1
+                    time.sleep(min(30, 2**attempt))
                 continue
             seconds = time.monotonic() - start
             parsed = out.get("parsed")
             if parsed is None:
                 last_error = out.get("parsing_error") or "model returned no structured output"
+                which += 1
                 continue
             meta = getattr(out.get("raw"), "usage_metadata", None) or {}
             tin, tout = int(meta.get("input_tokens", 0)), int(meta.get("output_tokens", 0))

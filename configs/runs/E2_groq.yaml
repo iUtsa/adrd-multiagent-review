@@ -22,7 +22,7 @@ panel:
     persona: >-
       an epidemiologist. You pay closest attention to who was studied, where they were recruited,
       and whether the sample and setting match what the review asks for.
-    model: {provider: groq, model: qwen/qwen3.8-27b, max_tokens: 2048, structured_method: function_calling, requests_per_minute: 3, tokens_per_minute: 8000, requests_per_day: 1000}
+    model: {provider: groq, model: qwen/qwen3.8-27b, max_tokens: 2048, requests_per_minute: 3, tokens_per_minute: 8000, requests_per_day: 1000}
   - id: C
     persona: >-
       a research methodologist. You pay closest attention to study design, data sources, and whether
