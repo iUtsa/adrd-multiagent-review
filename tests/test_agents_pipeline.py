@@ -311,3 +311,37 @@ def test_invalid_answer_switches_request_format(tmp_path):
     finally:
         llm_mod.time.sleep = orig
     assert used == ["function_calling", None] and res.parsed.inclusion[0].status == "not_met"
+
+
+def test_roles_sharing_a_model_share_one_limiter_and_token_budget():
+    import adrd_review.llm as m
+
+    m._LIMITERS.clear()
+    a = m.shared_limiter(ModelConfig(provider="groq", model="x", requests_per_minute=3, tokens_per_minute=8000, max_tokens=1500))
+    b = m.shared_limiter(ModelConfig(provider="groq", model="x", requests_per_minute=3, tokens_per_minute=8000, max_tokens=2048))
+    c = m.shared_limiter(ModelConfig(provider="groq", model="y", requests_per_minute=3))
+    assert a is b and a is not c  # same model -> same limiter, whatever the role's settings
+
+    lim = m.RateLimiter(tokens_per_minute=8000)
+    slept = []
+    real_sleep, real_clock = m.time.sleep, m.time.monotonic
+    clock = [1000.0]
+    m.time.monotonic = lambda: clock[0]
+    m.time.sleep = lambda sec: (slept.append(round(sec, 1)), clock.__setitem__(0, clock[0] + sec))
+    try:
+        for _ in range(3):
+            lim.wait(2500)  # 7,500 tokens: fits
+        assert sum(slept) == 0
+        lim.wait(2500)  # would be 10,000 in the same minute: must wait for the window
+        assert sum(slept) >= 60
+    finally:
+        m.time.sleep, m.time.monotonic = real_sleep, real_clock
+
+
+def test_retry_after_is_read_from_the_provider_message():
+    from adrd_review.llm import retry_after_seconds
+
+    assert retry_after_seconds(RuntimeError("Rate limit reached... Please try again in 7.66s. Visit")) == pytest.approx(7.66)
+    assert retry_after_seconds(RuntimeError("Please try again in 1m12.5s")) == pytest.approx(72.5)
+    assert retry_after_seconds(RuntimeError("Please try again in 2h3m50.4s")) == pytest.approx(7430.4)
+    assert retry_after_seconds(RuntimeError("something else")) is None

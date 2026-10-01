@@ -117,21 +117,73 @@ class ResponseCache:
 
 
 class RateLimiter:
-    """Thread-safe minimum spacing between calls."""
+    """Thread-safe limiter for one model: spacing between calls AND a tokens-per-minute budget.
 
-    def __init__(self, per_minute: float | None):
+    Providers such as Groq limit tokens per minute, not just requests. Before each call the
+    caller says roughly how many tokens it will use; the limiter waits until that fits in the
+    last 60 seconds' budget. After the call the real count replaces the estimate.
+    """
+
+    def __init__(self, per_minute: float | None = None, tokens_per_minute: int | None = None):
         self.interval = 60.0 / per_minute if per_minute else 0.0
+        self.tpm = tokens_per_minute
         self._lock = threading.Lock()
         self._next = 0.0
+        self._used: list[tuple[float, float]] = []  # (time, tokens) in the last minute
 
-    def wait(self) -> None:
-        if not self.interval:
-            return
+    def tighten(self, per_minute: float | None, tokens_per_minute: int | None) -> None:
+        """Several roles can share a model: keep the strictest limits any of them configured."""
+        if per_minute:
+            self.interval = max(self.interval, 60.0 / per_minute)
+        if tokens_per_minute:
+            self.tpm = min(self.tpm, tokens_per_minute) if self.tpm else tokens_per_minute
+
+    def wait(self, tokens: float = 0) -> None:
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                self._used = [(t, n) for t, n in self._used if now - t < 60]
+                spent = sum(n for _, n in self._used)
+                if self.tpm and self._used and spent + tokens > self.tpm:
+                    pause = 60 - (now - self._used[0][0]) + 0.5  # until the oldest call leaves the window
+                else:
+                    start = max(now, self._next)
+                    self._next = start + self.interval
+                    self._used.append((start, tokens))
+                    pause = start - now
+                    break
+            time.sleep(max(0.1, pause))
+        time.sleep(max(0.0, pause))
+
+    def record(self, estimated: float, actual: float) -> None:
+        """Correct the budget once the real token count is known."""
         with self._lock:
-            now = time.monotonic()
-            start = max(now, self._next)
-            self._next = start + self.interval
-        time.sleep(max(0.0, start - now))
+            self._used.append((time.monotonic(), actual - estimated))
+
+
+_LIMITERS: dict[str, RateLimiter] = {}
+_LIMITERS_LOCK = threading.Lock()
+
+
+def shared_limiter(config: "ModelConfig") -> RateLimiter:
+    """One limiter per provider+model, shared by every role that uses that model."""
+    with _LIMITERS_LOCK:
+        lim = _LIMITERS.get(config.label)
+        if lim is None:
+            lim = _LIMITERS[config.label] = RateLimiter(config.requests_per_minute, config.tokens_per_minute)
+        else:
+            lim.tighten(config.requests_per_minute, config.tokens_per_minute)
+        return lim
+
+
+def retry_after_seconds(error: Exception) -> float | None:
+    """Seconds a provider asked us to wait ('Please try again in 1m12.5s'), if it said."""
+    import re
+
+    m = re.search(r"try again in (?:(\d+)h)?(?:(\d+)m)?([\d.]+)s", str(error))
+    if not m:
+        return None
+    return int(m.group(1) or 0) * 3600 + int(m.group(2) or 0) * 60 + float(m.group(3))
 
 
 # --------------------------------------------------------------------------- #
@@ -183,7 +235,7 @@ class LangChainLLM:
         self.chat = chat_model if chat_model is not None else make_chat_model(config)
         self.cache = cache or ResponseCache(None)
         self.max_attempts = max_attempts
-        self.limiter = RateLimiter(config.requests_per_minute)
+        self.limiter = shared_limiter(config)
 
     def _cost(self, tokens_in: int, tokens_out: int) -> float | None:
         c = self.config
@@ -212,9 +264,11 @@ class LangChainLLM:
             return self.chat.with_structured_output(schema, include_raw=True, **({"method": m} if m else {}))
 
         messages = [SystemMessage(content=system), HumanMessage(content=user)]
+        # Rough size of this call, for the tokens-per-minute budget (corrected after the call).
+        estimate = (len(system) + len(user)) / 4 + (self.config.max_tokens or 1000) / 2
         last_error: Any = None
         for attempt in range(1, self.max_attempts + 1):
-            self.limiter.wait()
+            self.limiter.wait(estimate)
             start = time.monotonic()
             try:
                 out = runnable_for(which).invoke(messages)
@@ -225,7 +279,10 @@ class LangChainLLM:
                 # Per-minute token limits (e.g. Groq free tier: 8,000 tokens/min) need a real pause.
                 rate_limited = "429" in str(e) or "rate limit" in str(e).lower() or "quota" in str(e).lower()
                 if rate_limited:
-                    time.sleep(15 * attempt)
+                    asked = retry_after_seconds(e)
+                    if asked is not None and asked > 600:
+                        break  # a daily limit: waiting will not help within this run
+                    time.sleep(asked + 1 if asked is not None else 15 * attempt)
                 else:
                     which += 1
                     time.sleep(min(30, 2**attempt))
@@ -238,6 +295,8 @@ class LangChainLLM:
                 continue
             meta = getattr(out.get("raw"), "usage_metadata", None) or {}
             tin, tout = int(meta.get("input_tokens", 0)), int(meta.get("output_tokens", 0))
+            if tin or tout:
+                self.limiter.record(estimate, tin + tout)
             usage = Usage(
                 role=role,
                 model=self.config.label,
