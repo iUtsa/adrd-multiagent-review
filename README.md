@@ -44,6 +44,7 @@ python -m adrd_review.graph.runner configs/runs/E4_fake.yaml   # run the full pr
 | [docs/agents/](docs/agents/README.md) | **Build document for every agent** + exact prompts |
 | [docs/MODELS.md](docs/MODELS.md) | Which Gemini model does what; Gemini access setup; optional Groq |
 | [docs/SEARCH.md](docs/SEARCH.md) | The professor's PubMed search |
+| [docs/FULLTEXT_PLAN.md](docs/FULLTEXT_PLAN.md) | Analysis and plan for reviewing full papers, not just abstracts (not yet built) |
 | [docs/ANALYSIS.md](docs/ANALYSIS.md) | Repeats, results table, figures, error analysis, weights, cost, retrieval check |
 | [docs/EVALUATION.md](docs/EVALUATION.md) | How runs are scored, every metric, baseline results |
 | [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md) | Free local models with Ollama (on standby) |
