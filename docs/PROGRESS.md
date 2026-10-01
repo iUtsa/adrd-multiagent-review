@@ -4,6 +4,39 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-09-30 — First real-model run, what it showed, and the fixes
+
+**Groq key added** (free tier; in `.env`, not in git). Models: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b` (Qwen needs function-calling structured output). Limits: 1,000 requests/day, 8,000 tokens/min per model (~3 calls/min). Configs `E1_groq`, `E2_groq`, `E2_mixed`; rate-limit backoff 15–60 s.
+
+**First real run: `E2_groq`, 40 calibration articles, 18 minutes, 160 calls, 0 failures.**
+
+| | Recall | Precision | Specificity | κ |
+|---|---|---|---|---|
+| Keyword baseline | 0.769 (10/13) | 0.435 | 0.519 | 0.240 |
+| E2_groq (3 real models, codebook v0.1.0) | **0.000 (0/13)** | – | 1.000 (27/27) | 0.000 |
+
+The panel excluded all 40 articles; 37 of 40 unanimously. Three were 2–1 splits, all flagged by the screening safety rule.
+
+**Diagnosis** (read from every vote on the 13 gold includes):
+1. **Reviewers treated "not reported" as "not met".** The codebook said to give the benefit of the doubt at abstract stage; given a free include/exclude choice, the models did the opposite (e.g. "the abstract does not report a reference standard → I2 not met → exclude").
+2. **The placeholder codebook was stricter than the labels it is scored against.** E1–E3 (case-control, special populations, nursing homes) came from the MoCA review only but were applied to all instruments (10 wrong exclusions cited E1). I4 was ambiguous for studies of two instruments.
+3. **The gold labels are lenient abstract-stage decisions**: Cochrane itself excluded 7 of these 13 after full text, often for the reasons the models gave. But the models also missed the 6 that Cochrane finally kept.
+4. Triage answered "not enough information" for every article.
+
+Also seen: the real models handled the "MOCA" keyword trap (chemotherapy regimen) that fooled the keyword baseline, and the quote checker flagged a shortened quote.
+
+**Fixes (offline; real re-run pending network):**
+- **Screening reviewer redesigned** ([agents/screening-reviewer.md](agents/screening-reviewer.md)): the model judges each rule met / not_met / unclear with a quote, and the code decides: exclude only on a clear violation backed by a real quote; unclear never excludes.
+- **Codebook v0.2.0-placeholder**: decision rule rewritten; I4 satisfied if the setting fits at least one evaluated instrument; E1–E3 scoped to MoCA studies.
+- **Triage**: model reports `clearly_ineligible` + `missing`; `enough_information` is computed.
+- Adjudicator and verifier now see each reviewer's rule judgments.
+- Fake model updated to the new answer forms; fake scores unchanged (0.769 / 0.435 / 0.240), 0 warnings.
+- **Tests: 109 pass.**
+
+**Next:** re-run `E2_groq` on calibration and compare (about 20 minutes, free).
+
+---
+
 ## 2026-09-30 — Everything that can be built without a key is built
 
 | Item | Status | Where |

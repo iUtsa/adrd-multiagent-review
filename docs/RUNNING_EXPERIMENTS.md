@@ -86,3 +86,10 @@ Scores (recall, precision, F1, κ, WSS, WSS@95; annotation per label), cost and 
 | D_fake | 0.769 | 0.435 | 0.240 | 20 | 12 (30%) | 432 |
 
 These only show that every step runs and is counted correctly; the fake model is keyword matching.
+
+## First real-model result (Groq free tier, calibration, 40 articles)
+
+| Run | Codebook | Recall | Precision | Specificity | κ | Notes |
+|---|---|---|---|---|---|---|
+| E2_groq | v0.1.0 | 0.000 (0/13) | – | 1.000 | 0.000 | Excluded everything: reviewers treated "not reported" as "not met". Led to the per-rule redesign and codebook v0.2.0 ([PROGRESS.md](PROGRESS.md)). |
+| E2_groq | v0.2.0 | pending | | | | Re-run after the fixes: `python -m adrd_review.graph.runner configs/runs/E2_groq.yaml` |

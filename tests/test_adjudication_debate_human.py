@@ -22,6 +22,7 @@ from adrd_review.schemas import (
     DebateAnswer,
     Decision,
     EvidenceSpan,
+    InclusionCheck,
     ReviewerWeight,
     ScreeningAnswer,
     VerifierAnswer,
@@ -49,8 +50,9 @@ def vote(rid, labels, quotes=(), field="screening", rnd=0, conf=0.8):
 
 
 def screening_says(decision):
+    status = "met" if decision == "include" else "not_met"
     return {ScreeningAnswer: lambda *_: ScreeningAnswer(
-        decision=decision, rule_ids=["I1"], evidence=[EvidenceSpan(quote="We gave the MMSE to 300 primary care patients.")],
+        inclusion=[InclusionCheck(rule_id="I1", status=status, quote="We gave the MMSE to 300 primary care patients.")],
         rationale="r", confidence=0.8)}
 
 

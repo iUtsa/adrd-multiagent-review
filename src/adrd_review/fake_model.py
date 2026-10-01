@@ -21,7 +21,9 @@ from adrd_review.schemas import (
     DimensionAnnotation,
     EvidenceSpan,
     ExtractedField,
+    ExclusionCheck,
     ExtractionRecord,
+    InclusionCheck,
     ScreeningAnswer,
     TriageReport,
 )
@@ -49,8 +51,14 @@ STYLES = ("keyword-rules", "keyword-strict", "keyword-lenient")
 
 
 def _article_text(user: str) -> str:
-    """The article part of the user prompt (title + abstract)."""
-    return user.split("ARTICLE", 1)[-1]
+    """Title + abstract (+ full-text excerpt) from the user prompt, without the metadata lines
+    (journal, publication type, MeSH terms), which are not article text and cannot be quoted."""
+    body = user.split("ARTICLE", 1)[-1]
+    title = re.search(r"^Title: (.*)$", body, re.M)
+    rest = body.split("\nAbstract:\n", 1)
+    text = rest[1] if len(rest) == 2 else ""
+    text = text.split("\n\nFACTS ALREADY EXTRACTED", 1)[0]
+    return (title.group(1) if title else "") + "\n" + text
 
 
 def _sentence_with(text: str, pattern: str) -> str | None:
@@ -67,31 +75,42 @@ def default_responders(codebook=None, style: str = "keyword-rules") -> dict:
     dims = list(codebook.dimensions) if codebook is not None else ["instrument", "setting"]
 
     def triage(_schema, _system, user):
+        text = _article_text(user)
         has_abstract = "(no abstract available)" not in user
+        off_topic = has_abstract and not any(re.search(p, text, re.I) for p in INSTRUMENTS.values())
         return TriageReport(
-            enough_information=has_abstract,
+            clearly_ineligible=off_topic,
             missing=[] if has_abstract else ["I2", "I3", "I4"],
             note="" if has_abstract else "No abstract.",
         )
 
     def screening(_schema, _system, user):
+        # Keyword rules expressed as rule judgments. The decision is made by screening.decide():
+        #   keyword-rules    I1 needs an instrument, I2 needs dementia
+        #   keyword-strict   ... and I3 needs an accuracy term
+        #   keyword-lenient  only I1 is judged
         text = _article_text(user)
+        m = re.search(r"^Title: (.*)$", user, re.M)
+        title = m.group(1).strip() if m else ""
         found = [k for k, p in INSTRUMENTS.items() if re.search(p, text, re.I)]
-        dementia = bool(re.search(DEMENTIA, text, re.I))
-        include = bool(found) and dementia
+        inst_quote = next((q for q in (_sentence_with(text, INSTRUMENTS[k]) for k in found) if q), None)
+        checks = [InclusionCheck(rule_id="I1", status="met" if found else "not_met", quote=inst_quote if found else title)]
+        if style != "keyword-lenient":
+            dem = _sentence_with(text, DEMENTIA)
+            checks.append(InclusionCheck(rule_id="I2", status="met" if dem else "not_met", quote=dem or title))
+        else:
+            checks.append(InclusionCheck(rule_id="I2", status="unclear"))
         if style == "keyword-strict":
-            include = include and bool(re.search(ACCURACY, text, re.I))
-        elif style == "keyword-lenient":
-            include = bool(found)
-        quotes = [q for q in {_sentence_with(text, INSTRUMENTS[k]) for k in found} if q][:2]
+            acc = _sentence_with(text, ACCURACY)
+            checks.append(InclusionCheck(rule_id="I3", status="met" if acc else "not_met", quote=acc or title))
+        else:
+            checks.append(InclusionCheck(rule_id="I3", status="unclear"))
+        checks.append(InclusionCheck(rule_id="I4", status="unclear"))
         return ScreeningAnswer(
-            decision="include" if include else "exclude",
-            rule_ids=["I1", "I2"] if include else ["I1"],
-            evidence=[EvidenceSpan(quote=q) for q in quotes],
-            rationale="Keyword rule: names a listed instrument and dementia."
-            if include
-            else "Keyword rule: no listed instrument together with dementia.",
-            confidence=0.7 if include else 0.6,
+            inclusion=checks,
+            exclusion=[ExclusionCheck(rule_id=r, status="unclear") for r in ("E1", "E2", "E3")],
+            rationale=f"Keyword stand-in ({style}).",
+            confidence=0.7,
         )
 
     def extraction(_schema, _system, user):

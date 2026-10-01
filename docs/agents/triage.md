@@ -19,9 +19,10 @@ First step for every article: `START → triage → screening`. Its report is st
 
 | Field | Meaning |
 |---|---|
-| `enough_information` | True if every inclusion rule can be judged from the title/abstract |
-| `missing` | IDs of inclusion rules that cannot be judged, e.g. `["I2", "I3"]` |
-| `note` | One sentence on what is missing |
+| `clearly_ineligible` | (model) True if the text already shows the study cannot qualify, e.g. it is about another topic |
+| `missing` | (model) IDs of inclusion rules that cannot be judged **either way**, e.g. `["I2", "I3"]` |
+| `note` | (model) One sentence on what is missing |
+| `enough_information` | **(computed by the code)** `clearly_ineligible` or nothing is missing |
 
 ## 5. Prompt
 
@@ -39,7 +40,8 @@ Set per run in `configs/runs/*.yaml` under `roles.triage` (or the top-level `tri
 ## 7. Checks after the model answers
 
 - The answer must match `TriageReport` (LangChain structured output; malformed answers are retried).
-- Rule IDs in `missing` that are not inclusion rules in the codebook are removed.
+- Rule IDs in `missing` that are not inclusion rules in the codebook are removed; `missing` is emptied when the article is clearly ineligible.
+- `enough_information` is computed, never taken from the model: in the first real run the model answered "not enough information" for every article, including off-topic ones, sometimes with nothing listed as missing.
 
 ## 8. Failure handling
 
@@ -71,3 +73,4 @@ python -c "import json; [print(json.loads(l)['pmid'], json.loads(l)['triage']) f
 ## 13. Change log
 
 - 2026-09-30: built (Day 4). Full-text branch added.
+- 2026-09-30: after the first real run, split the question into `clearly_ineligible` + `missing`, with `enough_information` computed in code.

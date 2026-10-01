@@ -17,6 +17,8 @@ from adrd_review.schemas import (
     Article,
     DimensionAnnotation,
     EvidenceSpan,
+    ExclusionCheck,
+    InclusionCheck,
     ScreeningAnswer,
 )
 
@@ -68,19 +70,47 @@ def test_check_quotes_flags_invented_evidence():
 # ---- agents post-check model output ------------------------------------------
 
 
-def test_screening_drops_unknown_rule_ids_and_flags_bad_quotes():
-    def responder(*_):
-        return ScreeningAnswer(
-            decision="include",
-            rule_ids=["I1", "X9"],
-            evidence=[EvidenceSpan(quote="made up sentence")],
-            rationale="r",
-            confidence=0.9,
-        )
+REAL_QUOTE = "We tested the MMSE against DSM-IV dementia diagnosis in 500 primary care patients aged 65+."
 
-    vote, _ = screening.run(INCLUDE_ART, CODEBOOK, FakeLLM(FAKE_CFG, {ScreeningAnswer: responder}))
-    assert vote.rule_ids == ["I1"] and vote.labels == ["include"]
-    assert any("X9" in w for w in vote.warnings) and any("not found" in w for w in vote.warnings)
+
+def screen(inclusion, exclusion=()):
+    """Run the screening agent with a scripted set of rule judgments."""
+    answer = ScreeningAnswer(
+        inclusion=[InclusionCheck(rule_id=r, status=s, quote=q) for r, s, q in inclusion],
+        exclusion=[ExclusionCheck(rule_id=r, status=s, quote=q) for r, s, q in exclusion],
+        rationale="r",
+        confidence=0.9,
+    )
+    vote, _ = screening.run(INCLUDE_ART, CODEBOOK, FakeLLM(FAKE_CFG, {ScreeningAnswer: lambda *_: answer}))
+    return vote
+
+
+def test_unclear_never_excludes():
+    # The failure seen in the first real-model run: "not reported" must not become "exclude".
+    vote = screen([("I1", "met", REAL_QUOTE), ("I2", "unclear", None), ("I3", "unclear", None), ("I4", "unclear", None)])
+    assert vote.labels == ["include"] and vote.rule_ids == ["I1"]
+    assert vote.rule_checks["I2"] == "unclear" and vote.confidence == 0.625  # 0.5 + 0.5 * 1/4
+
+
+def test_clear_violation_with_a_real_quote_excludes():
+    vote = screen([("I1", "not_met", REAL_QUOTE), ("I2", "met", REAL_QUOTE)])
+    assert vote.labels == ["exclude"] and vote.rule_ids == ["I1"]
+    vote = screen([("I1", "met", REAL_QUOTE)], [("E1", "applies", REAL_QUOTE)])
+    assert vote.labels == ["exclude"] and vote.rule_ids == ["E1"]
+
+
+def test_exclusion_without_a_real_quote_is_treated_as_unclear():
+    vote = screen([("I1", "not_met", "a sentence that is not in the article")])
+    assert vote.labels == ["include"] and vote.rule_checks["I1"] == "unclear"
+    assert any("not_met without a real quote" in w for w in vote.warnings)
+    vote = screen([("I1", "met", REAL_QUOTE)], [("E1", "applies", None)])
+    assert vote.labels == ["include"] and vote.rule_checks["E1"] == "unclear"
+
+
+def test_missing_and_unknown_rules_are_handled():
+    vote = screen([("I1", "met", REAL_QUOTE), ("X9", "not_met", REAL_QUOTE)])
+    assert vote.labels == ["include"]  # X9 is not a codebook rule; I2-I4 were not judged -> unclear
+    assert any("X9" in w for w in vote.warnings) and any("I2: no judgment given" in w for w in vote.warnings)
 
 
 def test_annotation_keeps_only_codebook_labels():
@@ -120,7 +150,7 @@ class StubChat:
 
 
 def good_output():
-    parsed = ScreeningAnswer(decision="exclude", rule_ids=["I1"], evidence=[], rationale="r", confidence=0.7)
+    parsed = ScreeningAnswer(inclusion=[InclusionCheck(rule_id="I1", status="not_met", quote="q")], rationale="r", confidence=0.7)
     raw = AIMessage(content="", usage_metadata={"input_tokens": 1000, "output_tokens": 200, "total_tokens": 1200})
     return {"raw": raw, "parsed": parsed, "parsing_error": None}
 
@@ -129,7 +159,7 @@ def test_langchain_llm_records_usage_and_cost(tmp_path):
     cfg = ModelConfig(provider="google", model="m", price_in_per_mtok=1.0, price_out_per_mtok=4.0)
     llm = LangChainLLM(cfg, chat_model=StubChat([good_output()]), cache=ResponseCache(tmp_path))
     res = llm.structured(ScreeningAnswer, "sys", "user", role="screening")
-    assert res.parsed.decision == "exclude"
+    assert res.parsed.inclusion[0].status == "not_met"
     assert (res.usage.input_tokens, res.usage.output_tokens) == (1000, 200)
     assert res.usage.cost_usd == pytest.approx((1000 * 1 + 200 * 4) / 1e6)
     assert res.usage.model == "google:m" and not res.usage.cached
@@ -141,7 +171,7 @@ def test_identical_call_is_served_from_cache(tmp_path):
     llm = LangChainLLM(cfg, chat_model=chat, cache=ResponseCache(tmp_path))
     llm.structured(ScreeningAnswer, "sys", "user", role="screening")
     again = llm.structured(ScreeningAnswer, "sys", "user", role="screening")
-    assert chat.calls == 1 and again.usage.cached and again.parsed.decision == "exclude"
+    assert chat.calls == 1 and again.usage.cached and again.parsed.inclusion[0].status == "not_met"
     # A different prompt is a different request
     chat.outputs.append(good_output())
     llm.structured(ScreeningAnswer, "sys", "other user", role="screening")
@@ -152,7 +182,7 @@ def test_parse_failure_is_retried_then_gives_up(tmp_path):
     bad = {"raw": AIMessage(content="oops"), "parsed": None, "parsing_error": "invalid json"}
     cfg = ModelConfig(provider="google", model="m")
     llm = LangChainLLM(cfg, chat_model=StubChat([bad, good_output()]), cache=ResponseCache(None))
-    assert llm.structured(ScreeningAnswer, "s", "u", role="screening").parsed.decision == "exclude"
+    assert llm.structured(ScreeningAnswer, "s", "u", role="screening").parsed.inclusion[0].status == "not_met"
     llm = LangChainLLM(cfg, chat_model=StubChat([bad, bad, bad]), cache=ResponseCache(None), max_attempts=3)
     with pytest.raises(LLMError, match="invalid json"):
         llm.structured(ScreeningAnswer, "s", "u", role="screening")
@@ -206,7 +236,7 @@ def test_runner_collects_states_failures_and_predictions():
     assert [s["article"].pmid for s in states] == ["1", "3"]
     assert failures[0]["pmid"] == "2" and "provider down" in failures[0]["error"]
     pred = to_prediction(states[0])
-    assert pred.screening == "include" and pred.labels["instrument"] == ["MMSE"] and pred.score == 0.7
+    assert pred.screening == "include" and pred.labels["instrument"] == ["MMSE"] and pred.score == 0.75
     assert to_prediction(states[1]).screening == "exclude"
 
 
@@ -233,3 +263,21 @@ def test_repeats_do_not_share_cached_answers(tmp_path):
     r0.structured(ScreeningAnswer, "s", "u", role="screening")  # cached
     r1.structured(ScreeningAnswer, "s", "u", role="screening")  # different repeat: calls the model
     assert chat.calls == 2
+
+
+def test_triage_enough_information_is_computed_not_trusted():
+    from adrd_review.agents import triage
+    from adrd_review.schemas import TriageReport
+
+    def says(**kw):
+        report, _ = triage.run(INCLUDE_ART, CODEBOOK, FakeLLM(FAKE_CFG, {TriageReport: lambda *_: TriageReport(**kw)}))
+        return report
+
+    # off-topic paper: fully judgeable, nothing missing, even if the model also listed rules
+    r = says(clearly_ineligible=True, missing=["I2"], enough_information=False)
+    assert r.enough_information and r.missing == []
+    # thin abstract: some rules cannot be judged -> not enough (this is what triggers full text)
+    r = says(clearly_ineligible=False, missing=["I2", "ZZ"], enough_information=True)
+    assert not r.enough_information and r.missing == ["I2"]
+    # nothing missing -> enough, whatever the model put in enough_information
+    assert says(clearly_ineligible=False, missing=[], enough_information=False).enough_information

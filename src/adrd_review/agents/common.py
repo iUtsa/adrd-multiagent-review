@@ -93,7 +93,9 @@ def render_votes(votes: list, anonymous: bool = False) -> str:
     for i, v in enumerate(sorted(votes, key=lambda v: v.reviewer_id), start=1):
         name = f"Reviewer {i}" if anonymous else f"Reviewer {v.reviewer_id}"
         lines = [f"{name}: {show_labels(v.labels)}"]
-        if v.rule_ids:
+        if getattr(v, "rule_checks", None):
+            lines.append("  Rule judgments: " + ", ".join(f"{r} {s}" for r, s in v.rule_checks.items()))
+        elif v.rule_ids:
             lines.append(f"  Rules cited: {', '.join(v.rule_ids)}")
         for e in v.evidence:
             lines.append(f'  Evidence: "{e.quote}"')

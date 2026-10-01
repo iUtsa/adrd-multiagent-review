@@ -5,8 +5,16 @@
 # dataset), so the pipeline can be built and tested before the professor's codebook
 # arrives. Replace this file with the human team's codebook; keep the same structure.
 # Bump `version` on every change.
+#
+# Changes in 0.2.0 (after the first real-model calibration run, 2026-09-30):
+# - Decision rule: an article is excluded only when a rule is CLEARLY violated; missing
+#   information is "unclear" and never excludes at title/abstract stage.
+# - I4: a study of several instruments qualifies if the setting fits at least one of them.
+# - E1-E3 come from the MoCA review only (CD010775), so they now apply to MoCA studies only.
+#   In 0.1.0 they were applied to every instrument, which wrongly excluded case-control
+#   studies that the Mini-Cog, IQCODE and MMSE reviews had screened in.
 
-version: "0.1.0-placeholder"
+version: "0.2.0-placeholder"
 status: placeholder
 
 question: >
@@ -24,9 +32,10 @@ sources:
 
 screening:
   decision_rule: >
-    Include only if ALL inclusion rules (I1-I4) are met and NO exclusion rule applies.
-    At title/abstract stage, include when the abstract does not give enough information
-    to rule a criterion out (benefit of the doubt).
+    Exclude only when the text CLEARLY shows that an inclusion rule (I1-I4) is not met or
+    that an exclusion rule applies. If the title and abstract do not give enough information
+    to judge a rule, that rule is unclear, and unclear never excludes at this stage
+    (benefit of the doubt: the full text is checked later).
   inclusion:
     - id: I1
       name: Index test
@@ -65,27 +74,31 @@ screening:
         or secondary care).
         IQCODE: primary care (unselected patients at initial, non-specialist assessment)
         or secondary care (hospital patients, specialist geriatric or memory services).
+        A study that evaluates more than one listed instrument meets this rule if the
+        setting fits AT LEAST ONE of them.
       source: [CD011145, CD010783, CD010775, CD010860, CD010771, CD010772]
       examples: []
 
   exclusion:
     - id: E1
       name: Case-control design
-      text: Participants were selected by known diagnosis (case-control), which carries a high risk of bias.
+      text: >
+        MoCA studies only: participants were selected by known diagnosis (case-control), which
+        carries a high risk of bias. Does not apply to studies of MMSE, Mini-Cog or IQCODE.
       source: [CD010775]
       examples: []
 
     - id: E2
       name: Special populations
       text: >
-        Studies of early-onset dementia or dementia from a secondary cause, or samples
+        MoCA studies only: early-onset dementia or dementia from a secondary cause, or samples
         selected for a specific disease such as Parkinson's disease.
       source: [CD010775]
       examples: []
 
     - id: E3
       name: Special residential settings
-      text: Samples selected from specific settings such as nursing homes.
+      text: "MoCA studies only: samples selected from specific settings such as nursing homes."
       source: [CD010775]
       examples: []
 

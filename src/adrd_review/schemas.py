@@ -53,26 +53,49 @@ class EvidenceSpan(BaseModel):
 
 
 class TriageReport(BaseModel):
-    enough_information: bool = Field(
-        description="True if the title and abstract give enough information to apply every inclusion rule."
+    clearly_ineligible: bool = Field(
+        default=False,
+        description="True if the text already shows the study cannot qualify: an inclusion rule is clearly "
+        "not met (for example the paper is about another topic) or an exclusion rule clearly applies.",
     )
     missing: list[str] = Field(
         default_factory=list,
-        description="IDs of inclusion rules that cannot be judged from the title and abstract, e.g. ['I2'].",
+        description="IDs of inclusion rules that cannot be judged EITHER WAY from the title and abstract, "
+        "e.g. ['I2']. Leave empty when clearly_ineligible is true.",
     )
     note: str = Field(default="", description="One sentence on what is missing, if anything.")
+    # Set by the code, not the model: the article can be judged from what we have.
+    enough_information: bool = Field(default=True, description="Leave as is; computed from the fields above.")
+
+
+class InclusionCheck(BaseModel):
+    rule_id: str = Field(description="Inclusion rule ID exactly as given, e.g. 'I2'.")
+    status: Literal["met", "not_met", "unclear"] = Field(
+        description="met = the text shows the rule is satisfied. not_met = the text CLEARLY shows it is not "
+        "satisfied. unclear = the text does not say enough to tell. Missing information is ALWAYS unclear, never not_met."
+    )
+    quote: str | None = Field(
+        default=None,
+        description="Exact words from the article that show this. Required for met and not_met; null for unclear.",
+    )
+
+
+class ExclusionCheck(BaseModel):
+    rule_id: str = Field(description="Exclusion rule ID exactly as given, e.g. 'E1'.")
+    status: Literal["applies", "does_not_apply", "unclear"] = Field(
+        description="applies = the text CLEARLY shows this exclusion applies. does_not_apply = the text shows it "
+        "does not. unclear = the text does not say enough to tell."
+    )
+    quote: str | None = Field(default=None, description="Exact words from the article; required for applies.")
 
 
 class ScreeningAnswer(BaseModel):
-    decision: Literal["include", "exclude"] = Field(description="Include or exclude, following the decision rule.")
-    rule_ids: list[str] = Field(
-        description="IDs of the rules this decision rests on, e.g. ['I1', 'I2'] to include or ['E1'] / ['I3'] to exclude."
-    )
-    evidence: list[EvidenceSpan] = Field(
-        default_factory=list, description="1-3 exact quotes that support the decision."
-    )
-    rationale: str = Field(description="At most three sentences explaining the decision with reference to the rules.")
-    confidence: float = Field(ge=0, le=1, description="How sure you are, from 0 to 1.")
+    """The reviewer judges each rule; the code, not the model, turns that into include/exclude."""
+
+    inclusion: list[InclusionCheck] = Field(description="One entry per inclusion rule, in the order given.")
+    exclusion: list[ExclusionCheck] = Field(default_factory=list, description="One entry per exclusion rule.")
+    rationale: str = Field(description="At most three sentences on the rules that matter most for this article.")
+    confidence: float = Field(ge=0, le=1, description="How sure you are of your rule judgments overall, 0 to 1.")
 
 
 class ExtractedField(BaseModel):
@@ -125,6 +148,7 @@ class Vote(BaseModel):
     rationale: str = ""
     confidence: float | None = None
     warnings: list[str] = Field(default_factory=list)
+    rule_checks: dict[str, str] = Field(default_factory=dict)  # screening: rule ID -> met/not_met/unclear/applies/...
 
 
 class Decision(BaseModel):
