@@ -186,13 +186,19 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
         m = cfg_by[label]
         if m.requests_per_day and c > m.requests_per_day:
             rep.add("FAIL", f"{label}: ~{c:,.0f} calls needed but the limit is {m.requests_per_day:,}/day (split the run over days, or use --limit)")
+        if m.tokens_per_day and tokens_by[label] > m.tokens_per_day:
+            rep.add("FAIL", f"{label}: ~{tokens_by[label]:,.0f} tokens needed but the limit is {m.tokens_per_day:,} tokens/day "
+                            f"(use --limit, spread the model's roles over other models, or continue tomorrow: finished calls are cached)")
+        elif m.tokens_per_day and tokens_by[label] > 0.5 * m.tokens_per_day:
+            rep.add("WARN", f"{label}: ~{tokens_by[label]:,.0f} tokens, over half its {m.tokens_per_day:,} tokens/day limit: "
+                            f"one run per day on this model, and earlier calls today count too")
         rpm = m.requests_per_minute
         if m.tokens_per_minute:
             rpm = min(rpm or 1e9, m.tokens_per_minute / (tokens_by[label] / c))
         if rpm:
             minutes = max(minutes, c / rpm)
     total_calls = sum(calls_by.values())
-    rep.add("PASS" if not any("calls needed" in t for _, t in rep.lines) else "WARN",
+    rep.add("PASS" if not any("calls needed" in t or "tokens needed" in t for _, t in rep.lines) else "WARN",
             f"about {total_calls:,.0f} model calls" + (f"; roughly {minutes:,.0f} minutes at the configured rate limits" if minutes else ""))
 
     # 8. cost

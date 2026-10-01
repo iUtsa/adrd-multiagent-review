@@ -41,3 +41,16 @@ python scripts/fetch_search_corpus.py --rerun    # run the query again first
 ```
 
 Downloads every article's title and abstract to `data/corpus_search/`, then looks for each full paper (team PDF in `data/pdfs/`, PubMed Central, open-access PDF). Safe to stop and re-run. Writes `data/search/fulltext_report.csv` (source and size per article, or why none) and `data/search/pdfs_needed.csv` (papers with no full text: link and the file name to save the PDF as).
+
+### Result of the collection (2026-10-01)
+
+| | Count |
+|---|---|
+| Articles found | 1,855 |
+| Abstracts downloaded | 1,855 (3 without an abstract) |
+| **Full text obtained** | **1,118 (60%)**: 1,112 PubMed Central, 6 open-access PDFs |
+| No full text | 737 (40%): 591 paywalled, 143 free copy needing a manual download, 3 other |
+
+Full text found by publication year: 2015 24/51 · 2016 23/61 · 2017 41/79 · 2018 49/91 · 2019 75/139 · 2020 102/157 · 2021 116/171 · 2022 87/123 · 2023 82/130 · 2024 230/396 · 2025 288/448 · 2026 1/9.
+
+Typical full text: ~34,000 characters (~8,600 tokens). 22 papers exceed 80,000 characters; the longest is ~1.1 million characters. The pipeline's size cap sends Methods and Results first for those.

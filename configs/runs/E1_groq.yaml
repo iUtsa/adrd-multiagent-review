@@ -9,7 +9,7 @@ part: calibration
 concurrency: 2
 
 roles:
-  triage:     {model: {provider: groq, model: openai/gpt-oss-20b, max_tokens: 1500, requests_per_minute: 3, tokens_per_minute: 8000, requests_per_day: 1000}}
-  screening:  {model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 2048, requests_per_minute: 3, tokens_per_minute: 8000, requests_per_day: 1000}}
-  extraction: {model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 2048, requests_per_minute: 3, tokens_per_minute: 8000, requests_per_day: 1000}}
-  annotation: {model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 2048, requests_per_minute: 3, tokens_per_minute: 8000, requests_per_day: 1000}}
+  triage:     {model: {provider: groq, model: openai/gpt-oss-20b, max_tokens: 1500, requests_per_minute: 3, tokens_per_minute: 8000, requests_per_day: 1000, tokens_per_day: 200000}}
+  screening:  {model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 2048, requests_per_minute: 3, tokens_per_minute: 8000, requests_per_day: 1000, tokens_per_day: 200000}}
+  extraction: {model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 2048, requests_per_minute: 3, tokens_per_minute: 8000, requests_per_day: 1000, tokens_per_day: 200000}}
+  annotation: {model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 2048, requests_per_minute: 3, tokens_per_minute: 8000, requests_per_day: 1000, tokens_per_day: 200000}}

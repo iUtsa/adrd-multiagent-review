@@ -40,6 +40,7 @@ class ModelConfig(BaseModel):
     requests_per_minute: float | None = None  # stay under free-tier limits
     tokens_per_minute: int | None = None  # provider limit, if any (preflight checks calls fit)
     requests_per_day: int | None = None  # provider limit, if any
+    tokens_per_day: int | None = None  # provider limit, if any (Groq free tier: 200,000; not shown in its headers)
     price_in_per_mtok: float | None = None  # USD per million input tokens (optional)
     price_out_per_mtok: float | None = None
     # How LangChain asks for structured output: None = provider default, or

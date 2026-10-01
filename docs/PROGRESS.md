@@ -4,6 +4,37 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-10-01 — Step 4 (real re-run after the fix) and the professor's papers collected
+
+**Professor's keyword search collected** (`python scripts/fetch_search_corpus.py`): 1,855 abstracts in `data/corpus_search/`; **full text for 1,118 (60%)**: 1,112 PubMed Central + 6 open-access PDFs. No full text for 737: 591 paywalled, 143 with a free copy that needs a manual download, 3 other. All 737 are in `data/search/pdfs_needed.csv` (link + file name to save as). Typical paper ~8,600 tokens; 22 exceed 80,000 characters (one is ~285,000 tokens), handled by the size cap.
+
+**Step 4: `E2_groq` re-run on the 40 calibration articles (codebook v0.2.0, per-rule screening).** 29 of 40 articles completed; 11 are waiting on Groq's daily token limit.
+
+Screening on the **29 completed articles** (10 gold includes):
+
+| | Recall | Precision | F1 | Specificity | κ | WSS |
+|---|---|---|---|---|---|---|
+| First real run, before the fix (all 40) | 0.000 | – | 0.000 | 1.000 | 0.000 | 0.000 |
+| Keyword baseline (same 29) | 0.800 | 0.471 | 0.593 | 0.526 | 0.280 | 0.214 |
+| **E2_groq after the fix (same 29)** | **0.900** | **0.818** | **0.857** | **0.895** | **0.776** | **0.521** |
+
+- Panel agreement on screening: Fleiss' κ 0.609, 21 of 29 unanimous; 4 split-vote exclusions flagged for a human.
+- Instrument labels: micro F1 0.846. Setting labels: 0.160 (the placeholder's setting labels are derived, and `community_or_primary_care` overlaps two other labels: a placeholder problem).
+- Errors among the 29: one missed include (a 37-item MMSE version, excluded under I1 by two reviewers), two wrong includes.
+- This is a **partial calibration result on placeholder data with free models**, not a study result.
+
+**Three problems found by running for real, all fixed:**
+1. **Qwen's function-calling mode intermittently produced invalid answers** (7 of the first 12 articles). Fix: Qwen uses the constrained JSON-schema mode, and any rejected answer is retried with the next request format instead of the same one.
+2. **Two roles on one model each had their own rate limiter** and together exceeded 8,000 tokens/min. Fix: one limiter per model, with a tokens-per-minute budget, and "try again in N seconds" is honoured.
+3. **Groq's free tier has a daily token limit (200,000 per model) that its headers do not show.** One model reached it. Fix: `tokens_per_day` in the Groq configs; the preflight check now fails a run that would exceed it. Finished calls are cached, so the run continues the next day with the same command.
+
+- A background time limit (~30 minutes) also stopped one attempt; nothing was lost (cache).
+- **Tests: 126 pass.**
+
+**To finish the remaining 11 articles** (after the daily limit rolls over): `python -m adrd_review.graph.runner configs/runs/E2_groq.yaml`
+
+---
+
 ## 2026-10-01 — Two-stage review: agents now read the full paper
 
 Decision (Utsa): the human reviewers judged from full papers, so the agents should too. Analysis: [FULLTEXT_PLAN.md](FULLTEXT_PLAN.md). Build document: [agents/fulltext-eligibility.md](agents/fulltext-eligibility.md).

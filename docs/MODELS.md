@@ -36,7 +36,9 @@ A Groq free-tier key is in `.env` (`GROQ_API_KEY`). Groq's general-purpose model
 | `openai/gpt-oss-20b` | OpenAI open-weights (small) | default works | same |
 | `qwen/qwen3.8-27b` | Alibaba Qwen | needs `structured_method: function_calling` | same |
 
-**The token limit is the tight one**: a screening call uses ~2,400 tokens (gpt-oss spends ~800 on reasoning), so each model manages ~3 calls/min. Configs set `requests_per_minute: 3`, and rate-limit errors now back off 15/30/45/60 s (5 attempts). Fine for calibration runs; the full test set with repeats would exceed 1,000 requests/day per model.
+There is also a **daily token limit of 200,000 per model** that the response headers do not show (found on 2026-10-01 when a run hit it). A 3-reviewer run on 40 articles uses 125,000–210,000 tokens per model, so the free tier supports about **one 40-article run per day**, and a model with two roles can exceed it; the preflight check reports this, and an interrupted run continues the next day from the cache.
+
+**The per-minute token limit is the other tight one**: a screening call uses ~2,400 tokens (gpt-oss spends ~800 on reasoning), so each model manages ~3 calls/min. Configs set `requests_per_minute: 3`, and rate-limit errors now back off 15/30/45/60 s (5 attempts). Fine for calibration runs; the full test set with repeats would exceed 1,000 requests/day per model.
 
 | Config | Needs | Panel |
 |---|---|---|

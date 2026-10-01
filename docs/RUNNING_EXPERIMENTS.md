@@ -109,4 +109,4 @@ These only show that every step runs and is counted correctly; the fake model is
 | Run | Codebook | Recall | Precision | Specificity | κ | Notes |
 |---|---|---|---|---|---|---|
 | E2_groq | v0.1.0 | 0.000 (0/13) | – | 1.000 | 0.000 | Excluded everything: reviewers treated "not reported" as "not met". Led to the per-rule redesign and codebook v0.2.0 ([PROGRESS.md](PROGRESS.md)). |
-| E2_groq | v0.2.0 | pending | | | | Re-run after the fixes: `python -m adrd_review.graph.runner configs/runs/E2_groq.yaml` |
+| E2_groq | v0.2.0 | 0.900 (9/10) | 0.818 | 0.895 | 0.776 | **Partial: 29 of 40 articles** (11 waiting on Groq's daily token limit). Keyword baseline on the same 29: recall 0.800, precision 0.471, κ 0.280. Finish with the same command the next day. |
