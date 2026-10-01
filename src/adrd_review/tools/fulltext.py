@@ -95,6 +95,7 @@ def get_fulltext(
     pmc_dir: str | Path = DEFAULT_FULLTEXT_DIR,
     oa_dir: str | Path = OA_PDF_DIR,
     allow_download: bool = True,
+    client=None,
 ) -> FullTextResult:
     """Never raises: a source that errors is skipped and the reason recorded."""
     notes: list[str] = []
@@ -109,7 +110,7 @@ def get_fulltext(
 
     if article.pmcid:
         try:
-            ft = fetch_fulltext(article, cache_dir=pmc_dir)
+            ft = fetch_fulltext(article, cache_dir=pmc_dir, client=client) if client else fetch_fulltext(article, cache_dir=pmc_dir)
             if ft is not None:
                 return FullTextResult(ft, "pmc", article.pmcid)
             notes.append("PubMed Central has no downloadable body text")

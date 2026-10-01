@@ -32,3 +32,12 @@ python -c "import yaml; from adrd_review.tools.pubmed import search; ids, n = se
 - The review topic is **AI / machine learning for detecting, diagnosing, monitoring or predicting ADRD in older adults**. The placeholder gold standard and codebook (Cochrane reviews of cognitive tests such as MMSE and MoCA) are a different topic. They still test the screening mechanics; the agents' prompts follow the real codebook automatically once it arrives.
 - The human team's 268 articles are presumably drawn from these 1,855. Once we have their PMIDs, the retrieval check (task 9.3) measures how many the search recovers.
 - `"AI"[tiab]` also matches unrelated uses of the abbreviation (for example aromatase inhibitor), a keyword trap the screening agents will need to handle.
+
+## Collecting the papers (abstracts + full text)
+
+```bash
+python scripts/fetch_search_corpus.py            # all saved search results
+python scripts/fetch_search_corpus.py --rerun    # run the query again first
+```
+
+Downloads every article's title and abstract to `data/corpus_search/`, then looks for each full paper (team PDF in `data/pdfs/`, PubMed Central, open-access PDF). Safe to stop and re-run. Writes `data/search/fulltext_report.csv` (source and size per article, or why none) and `data/search/pdfs_needed.csv` (papers with no full text: link and the file name to save the PDF as).
