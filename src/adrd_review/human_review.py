@@ -75,8 +75,9 @@ def resume_run(run_dir: str | Path, answer: AnswerFn = terminal_answer) -> dict:
         while snap.interrupts:
             item = snap.interrupts[0].value
             fld = item["field"]
-            multi = fld != "screening" and codebook.dimensions[fld].multi_label
-            labels = answer(item, allowed_labels(codebook, fld), multi)
+            multi = fld not in ("screening", "eligibility") and codebook.dimensions[fld].multi_label
+            allowed = [x for x in allowed_labels(codebook, fld) if x != "unclear"]
+            labels = answer(item, allowed, multi)
             graph.invoke(Command(resume=labels), cfg)
             answered += 1
             snap = graph.get_state(cfg)

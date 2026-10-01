@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from adrd_review.agents import adjudicator, annotation, curator, debate, extraction, screening, triage, verifier  # noqa: E402
+from adrd_review.agents import adjudicator, annotation, curator, debate, eligibility, extraction, screening, triage, verifier  # noqa: E402
 from adrd_review.agents.common import render_article, render_screening_rules  # noqa: E402
 from adrd_review.codebook import load_codebook  # noqa: E402
 from adrd_review.schemas import (  # noqa: E402
@@ -108,6 +108,17 @@ def main() -> int:
         "gold": "exclude", "agent": "include", "rules": ["I4"],
         "reasons": ["Primary care setting assumed to satisfy I4 for MMSE."],
     }]
+    paper = EXAMPLE.model_copy(update={"fulltext": (
+        "[METHODS] We recruited 500 consecutive primary care patients aged 65 and over. All completed the MMSE. "
+        "Dementia was diagnosed with DSM-IV criteria by a clinician blind to the MMSE score.\n\n"
+        "[RESULTS] At a cut-off of 24 the MMSE had sensitivity 0.85 and specificity 0.90."
+    )})
+    pages["eligibility.md"] = (
+        "Full-text eligibility reviewer (stage 2): exact prompt (no persona)",
+        eligibility.system_prompt(cb),
+        eligibility.user_prompt(paper),
+        ScreeningAnswer,
+    )
     pages |= {
         "adjudicator.md": (
             "Adjudicator: exact prompt (screening decision)",

@@ -44,7 +44,7 @@ python -m adrd_review.graph.runner configs/runs/E4_fake.yaml   # run the full pr
 | [docs/agents/](docs/agents/README.md) | **Build document for every agent** + exact prompts |
 | [docs/MODELS.md](docs/MODELS.md) | Which Gemini model does what; Gemini access setup; optional Groq |
 | [docs/SEARCH.md](docs/SEARCH.md) | The professor's PubMed search |
-| [docs/FULLTEXT_PLAN.md](docs/FULLTEXT_PLAN.md) | Analysis and plan for reviewing full papers, not just abstracts (not yet built) |
+| [docs/FULLTEXT_PLAN.md](docs/FULLTEXT_PLAN.md) | Why and how the agents review full papers: measurements, evidence, design (built) |
 | [docs/ANALYSIS.md](docs/ANALYSIS.md) | Repeats, results table, figures, error analysis, weights, cost, retrieval check |
 | [docs/EVALUATION.md](docs/EVALUATION.md) | How runs are scored, every metric, baseline results |
 | [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md) | Free local models with Ollama (on standby) |
@@ -70,7 +70,11 @@ src/adrd_review/
   split.py                make + freeze the calibration/test split
   tools/pubmed.py         PubMed search / fetch / lookup
   tools/pmc.py            PubMed Central full text
-  agents/                 triage, screening, extraction, annotation, adjudicator, verifier, debate, human, curator
+  tools/pdf.py            read the team's PDFs (with a quality check)
+  tools/fulltext.py       full-text source ladder: team PDF -> PMC -> open-access PDF
+  preflight.py            check keys, models, limits, cost before a run
+  agents/                 triage, screening, eligibility (full text), extraction, annotation, adjudicator,
+                          verifier, debate, human, curator
   graph/                  state.py, pipeline.py (LangGraph), runner.py
   eval/metrics.py         P/R/F1, Cohen & Fleiss kappa, WSS, WSS@95, cost
   eval/score.py           score a predictions file against the gold standard

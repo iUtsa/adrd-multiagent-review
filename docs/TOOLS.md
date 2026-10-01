@@ -133,3 +133,28 @@ The agents then see an excerpt (default 12,000 characters, cut at a sentence end
 Which setting to use for the study depends on question 5 for the professor (were the human reviewers screening abstracts only?). On the 40 calibration articles of the placeholder, 5 have PubMed Central full text (older papers rarely do).
 
 Tests: `tests/test_fulltext.py`.
+
+
+---
+
+## Full-text sources — `tools/fulltext.py` and `tools/pdf.py`
+
+Used by two-stage runs (`eligibility: fulltext`). For each article that passes abstract screening, the full paper is looked for in this order:
+
+1. **`data/pdfs/<PMID>.pdf`**: the team's PDF (what the human reviewers read)
+2. **PubMed Central** (`tools/pmc.py`)
+3. **Open-access PDF** (only links Europe PMC marks "Open access"; rarely downloadable)
+4. **None**: flagged for a human and listed in the run's `pdfs_needed.csv`
+
+```bash
+python -m adrd_review.tools.fulltext 23172761 31234567   # which source each PMID would use, or why none
+python -m adrd_review.tools.pdf data/pdfs/23172761.pdf   # what a PDF extracts to, and whether it passes the quality check
+```
+
+**Adding the team's PDFs:** save each as `data/pdfs/<PMID>.pdf` (the folder is git-ignored). `pdfs_needed.csv` gives, for every paper without full text: PMID, title, DOI, a link to get it, why it was missing, and the file name to save it as. Re-run the same command afterwards; finished calls come from the cache.
+
+**PDF quality check** (`tools/pdf.py`): rejects files with under 3,000 characters of text (scanned pages), under 60% letters/spaces (garbled), or words run together (column problems); a rejected PDF falls back to the next source. Recognised headings split the text into sections; the reference list and back matter are dropped. Tested on a real two-column academic PDF.
+
+**Long papers** (`fit_text`): the whole paper when it fits the configured size; otherwise Methods, Participants and Results first, and the record says it was shortened.
+
+Tests: `tests/test_two_stage.py`.

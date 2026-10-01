@@ -1,0 +1,44 @@
+# E3_twostage_fake: E3 as a TWO-STAGE review, like the human process: abstract screening (lenient),
+# then the full paper (team PDF -> PubMed Central -> open-access PDF) is judged strictly;
+# extraction and annotation read the full paper. See docs/agents/fulltext-eligibility.md.
+# Keyword stand-in models: runs without any key; scores are NOT results.
+#   python -m adrd_review.graph.runner configs/runs/E3_twostage_fake.yaml
+name: E3_twostage_fake
+condition: E3
+description: "E3 two-stage - abstract screening, then full-text eligibility, extraction and annotation from the full paper"
+part: calibration
+concurrency: 8
+
+roles:
+  triage:     {model: {provider: fake, model: keyword-rules}}
+  extraction: {model: {provider: fake, model: keyword-rules}}
+
+panel:
+  - id: A
+    persona: &clinical >-
+      a clinical neurologist who diagnoses dementia. You pay closest attention to whether the target
+      condition, the test being evaluated and the reference-standard diagnosis are clinically sound.
+    model: {provider: fake, model: keyword-rules}
+  - id: B
+    persona: &epi >-
+      an epidemiologist. You pay closest attention to who was studied, where they were recruited,
+      and whether the sample and setting match what the review asks for.
+    model: {provider: fake, model: keyword-strict}
+  - id: C
+    persona: &methods >-
+      a research methodologist. You pay closest attention to study design, data sources, and whether
+      diagnostic accuracy can actually be assessed from the study.
+    model: {provider: fake, model: keyword-lenient}
+
+# ---- added for E3 ----
+adjudicator: {provider: fake, model: keyword-rules}
+escalate_below: 0.6
+verifier:
+  enabled: true
+  model: {provider: fake, model: keyword-rules}
+human: none
+
+# ---- two-stage ----
+eligibility: fulltext          # stage 2 on the full paper
+eligibility_max_chars: 80000   # whole paper for almost every article
+pdf_dir: data/pdfs             # the team's PDFs, named <PMID>.pdf

@@ -78,6 +78,42 @@ def combine_screening(votes: list[Vote], weights: dict[str, float] | None = None
     )
 
 
+def combine_eligibility(votes: list[Vote], weights: dict[str, float] | None = None) -> Decision:
+    """Full-text eligibility: include / exclude / unclear.
+
+    Unanimous or a weighted majority (> half) decides; with no majority the answer is
+    "unclear", which is sent to a human. `include_score` treats an unclear vote as 0.5.
+    """
+    if not votes:
+        raise ValueError("No eligibility votes to combine")
+    weights = weights or {}
+    total = sum(_weight(v, weights) for v in votes)
+    share: dict[str, float] = defaultdict(float)
+    for v in votes:
+        share[v.labels[0]] += _weight(v, weights) / total
+
+    def p_include(v: Vote) -> float:
+        return 0.5 if v.labels == ["unclear"] else _include_probability(v)
+
+    score = sum(_weight(v, weights) * p_include(v) for v in votes) / total
+    top = max(share, key=lambda k: share[k])
+    if len(votes) == 1:
+        label, method, conf = votes[0].labels[0], "single", votes[0].confidence
+    elif len(share) == 1:
+        label, method, conf = top, "unanimous", 1.0
+    elif share[top] > 0.5:
+        label, method, conf = top, "majority", share[top]
+    else:
+        label, method, conf = "unclear", "no_majority", share[top]
+    return Decision(
+        field="eligibility",
+        labels=[label],
+        method=method,
+        confidence=None if conf is None else round(conf, 4),
+        include_score=round(score, 4),
+    )
+
+
 def combine_labels(
     votes: list[Vote],
     field: str,

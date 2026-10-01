@@ -98,7 +98,9 @@ Panel runs keep `roles.triage` and `roles.extraction` and list the reviewers und
 | `E1_groq.yaml`, `E2_groq.yaml` | Groq | real models while Gemini is pending ([MODELS.md](MODELS.md)) |
 | `E2_mixed.yaml` | Gemini + Groq | panel from three model families |
 
-Extra config keys: `adjudicator:` (model), `escalate_below:` (default 0.6), `verifier: {enabled, model}`, `debate_rounds:`, `human: none | gold | queue`.
+| `E3_twostage_*`, `E4_twostage_*` | nothing / Gemini | + stage 2 on the full paper ([agents/fulltext-eligibility.md](agents/fulltext-eligibility.md)) |
+
+Extra config keys: `adjudicator:` (model), `escalate_below:` (default 0.6), `verifier: {enabled, model}`, `debate_rounds:`, `human: none | gold | queue`, `eligibility: off | fulltext`, `eligibility_max_chars:`, `pdf_dir:`, `weights_file:`; per model: `tokens_per_minute:`, `requests_per_day:` (used by the preflight check).
 
 ## Running
 
@@ -119,6 +121,7 @@ Each run writes `data/runs/<name>/<timestamp>/`:
 | `failures.json` | Articles that errored, with the error |
 | `report.json` | Scores, cost/time summary, failure and warning counts, panel agreement (Fleiss' κ among reviewers), how each decision was reached, escalations, adjudications, debate statistics |
 | `checkpoints.sqlite` | `human: queue` only: saved state of paused articles |
+| `pdfs_needed.csv` | Two-stage runs: papers with no full text, with a link and the file name to save each PDF as |
 | `curator_proposals.md/.json` | After running the Curator on a calibration run |
 | `run_meta.json` | Config, codebook version + hash, gold hash, split file, git commit, timings |
 

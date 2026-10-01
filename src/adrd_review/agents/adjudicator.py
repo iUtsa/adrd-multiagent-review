@@ -17,7 +17,7 @@ from adrd_review.agents.common import (
     show_labels,
 )
 from adrd_review.codebook import Codebook
-from adrd_review.consensus import combine_labels, combine_screening
+from adrd_review.consensus import combine_eligibility, combine_labels, combine_screening
 from adrd_review.llm import LLM
 from adrd_review.schemas import Adjudication, AdjudicationAnswer, Article, Decision, Usage, Vote
 
@@ -80,6 +80,8 @@ def run(
 
     if field == "screening":
         combined = combine_screening(votes, weights)
+    elif field == "eligibility":
+        combined = combine_eligibility(votes, weights)
     else:
         dim = codebook.dimensions[field]
         combined = combine_labels(votes, field, dim.multi_label, dim.label_ids, weights)
@@ -97,7 +99,7 @@ def run(
         labels=combined.labels,
         method="adjudicator",
         confidence=round(confidence, 4),
-        include_score=combined.include_score if field == "screening" else None,
+        include_score=combined.include_score if field in ("screening", "eligibility") else None,
     )
     record = Adjudication(
         field=field,

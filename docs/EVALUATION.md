@@ -58,6 +58,14 @@ Rules worth knowing:
 - Empty denominators give 0.0 (same convention as scikit-learn).
 - κ can be low even when accuracy is high, if one label dominates. Example below: MMSE.
 
+## Scoring two-stage runs
+
+When a run has a full-text stage, `predictions.csv` also has a `fulltext` column (the decision after reading the paper), and the report adds **FULL-TEXT ELIGIBILITY**: recall, precision, F1, specificity and κ against the gold `fulltext` column. An article excluded at stage 1 counts as excluded at stage 2. An unresolved "unclear" counts as include (it is waiting for a human).
+
+Annotation is then scored on the articles the gold standard **finally** includes (after full text), not on everything that passed abstract screening.
+
+Stage 1 (`screening`) is still scored against the gold abstract-stage decision, so each stage is compared with the matching human decision.
+
 ## What a pipeline run adds to the report
 
 Runs made with `adrd_review.graph.runner` also report, in `report.json` and on screen:

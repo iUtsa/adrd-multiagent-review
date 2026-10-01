@@ -40,7 +40,7 @@ from adrd_review.eval.metrics import usage_summary
 from adrd_review.eval.score import evaluate, format_report
 from adrd_review.freeze import prompts_sha
 from adrd_review.gold import GoldRecord, file_sha256, load_gold, write_gold
-from adrd_review.graph.pipeline import PipelineOptions, Reviewer, build_pipeline
+from adrd_review.graph.pipeline import PipelineOptions, Reviewer, build_pipeline, finally_included
 from adrd_review.llm import LLM, ModelConfig, build_llm
 from adrd_review.schemas import Article
 from adrd_review.split import load_split
@@ -93,6 +93,12 @@ class RunConfig(BaseModel):
     # (triage says the abstract is not enough), or always. Excerpt capped at fulltext_max_chars.
     fulltext: Literal["never", "when_needed", "always"] = "never"
     fulltext_max_chars: int = 12000
+    # Two-stage review (like the human process): articles kept at abstract screening get their full
+    # paper (team PDF -> PubMed Central -> open-access PDF) and a strict full-text eligibility stage;
+    # extraction and annotation then read the full paper. Needs a model with a large enough limit.
+    eligibility: Literal["off", "fulltext"] = "off"
+    eligibility_max_chars: int = 80000
+    pdf_dir: str = "data/pdfs"
     # Reviewer weights computed on a calibration run (python -m adrd_review.eval.weights);
     # overrides the `weight:` of each panel reviewer it lists.
     weights_file: str | None = None
@@ -155,6 +161,9 @@ def build_graph(config: RunConfig, codebook: Codebook, gold: list[GoldRecord], c
         human=human,
         fulltext=config.fulltext,
         fulltext_max_chars=config.fulltext_max_chars,
+        eligibility=config.eligibility == "fulltext",
+        eligibility_max_chars=config.eligibility_max_chars,
+        fulltext_source=_fulltext_source(config),
     )
     graph = build_pipeline(
         codebook,
@@ -165,6 +174,12 @@ def build_graph(config: RunConfig, codebook: Codebook, gold: list[GoldRecord], c
         checkpointer=checkpointer,
     )
     return graph, reviewers
+
+
+def _fulltext_source(config: RunConfig):
+    from adrd_review.tools.fulltext import get_fulltext
+
+    return lambda article: get_fulltext(article, pdf_dir=config.pdf_dir)
 
 
 def open_checkpointer(path: Path):
@@ -191,7 +206,7 @@ def open_checkpointer(path: Path):
 # --------------------------------------------------------------------------- #
 
 
-def to_prediction(state: dict) -> GoldRecord:
+def to_prediction(state: dict, two_stage: bool = False) -> GoldRecord:
     """Turn a finished graph state into one row of predictions.csv."""
     decision = state["screening_decision"]
     include = decision.labels == ["include"]
@@ -200,12 +215,19 @@ def to_prediction(state: dict) -> GoldRecord:
     else:
         conf = decision.confidence if decision.confidence is not None else 0.5
         score = conf if include else 1 - conf
+    # Two-stage runs also report the full-text decision. An unresolved "unclear" counts as
+    # include (flagged for a human), and an article excluded at stage 1 is excluded at stage 2.
+    fulltext = None
+    elig = state.get("eligibility_decision")
+    if two_stage:
+        fulltext = "exclude" if not include or (elig is not None and elig.labels == ["exclude"]) else "include"
     labels = {}
-    if include:
+    if finally_included(state):
         labels = {f: d.labels for f, d in (state.get("annotation_decisions") or {}).items() if d.labels}
     return GoldRecord(
         pmid=state["article"].pmid,
         screening="include" if include else "exclude",
+        fulltext=fulltext,
         labels=labels,
         score=round(score, 4),
     )
@@ -285,9 +307,13 @@ def debate_stats(states: list[dict], gold_by: dict[str, GoldRecord]) -> dict | N
 
 def write_outputs(out: Path, config: RunConfig, codebook: Codebook, gold: list[GoldRecord], pmids: list[str],
                   states: list[dict], failures: list[dict], paused: list[str], wall: float, reviewers: list[Reviewer]) -> dict:
-    preds = [to_prediction(s) for s in states]
+    two_stage = config.eligibility == "fulltext"
+    preds = [to_prediction(s, two_stage) for s in states]
     # Recall guard: a failed article is predicted 'include' so it goes to a human, never silently dropped.
-    preds += [GoldRecord(pmid=f["pmid"], screening="include", score=0.5, source="FAILED") for f in failures]
+    preds += [
+        GoldRecord(pmid=f["pmid"], screening="include", fulltext="include" if two_stage else None, score=0.5, source="FAILED")
+        for f in failures
+    ]
     order = {p: i for i, p in enumerate(pmids)}
     preds.sort(key=lambda r: order[r.pmid])
     write_gold(preds, out / "predictions.csv", dimensions=list(codebook.dimensions))
@@ -310,7 +336,8 @@ def write_outputs(out: Path, config: RunConfig, codebook: Codebook, gold: list[G
     methods = Counter(
         f"{d.field}:{d.method}"
         for st in states
-        for d in [st["screening_decision"], *(st.get("annotation_decisions") or {}).values()]
+        for d in [st["screening_decision"], *([st["eligibility_decision"]] if st.get("eligibility_decision") else []),
+                  *(st.get("annotation_decisions") or {}).values()]
     )
     report["decision_methods"] = dict(sorted(methods.items()))
     esc = [e for s in states for e in s.get("escalations", [])]
@@ -322,9 +349,30 @@ def write_outputs(out: Path, config: RunConfig, codebook: Codebook, gold: list[G
         "answered_by_human": sum(len(s.get("human_answers", [])) for s in states),
     }
     report["adjudications"] = sum(len(s.get("adjudications", [])) for s in states)
+    if two_stage:
+        reached = [s for s in states if (s.get("fulltext_info") or {}).get("stage") == 2]
+        sources = Counter((s["fulltext_info"].get("source") or "none") for s in reached)
+        needed = [s for s in reached if not s["fulltext_info"].get("used")]
+        report["fulltext_sources"] = {
+            "reached_stage_2": len(reached),
+            "by_source": dict(sources),
+            "truncated": sum(bool(s["fulltext_info"].get("truncated")) for s in reached),
+            "pdfs_needed": len(needed),
+        }
+        import csv as _csv
+
+        with (out / "pdfs_needed.csv").open("w", newline="") as fh:
+            w = _csv.writer(fh)
+            w.writerow(["pmid", "title", "doi", "link", "why_missing", "save_as"])
+            for s in needed:
+                a, info = s["article"], s["fulltext_info"]
+                w.writerow([a.pmid, a.title, a.doi or "", info.get("link") or "", info.get("reason", ""),
+                            f"{config.pdf_dir}/{a.pmid}.pdf"])
     report["debate"] = debate_stats(states, {g.pmid: g for g in gold})
     report["warnings"] = sum(
-        len(v.warnings) for s in states for v in s.get("screening_votes", []) + s.get("annotation_votes", [])
+        len(v.warnings)
+        for s in states
+        for v in s.get("screening_votes", []) + s.get("eligibility_votes", []) + s.get("annotation_votes", [])
     ) + sum(len(a.warnings) for s in states for a in s.get("adjudications", []))
     (out / "report.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
     return report
@@ -361,6 +409,12 @@ def print_summary(report: dict, config: RunConfig, part: str, out: Path, usages_
     )
     if report.get("debate"):
         print(f"  debate: {report['debate']}")
+    fs = report.get("fulltext_sources")
+    if fs:
+        print("\nFULL TEXT (stage 2)")
+        print(f"  articles reaching stage 2: {fs['reached_stage_2']}   source: {fs['by_source']}   shortened to fit: {fs['truncated']}")
+        if fs["pdfs_needed"]:
+            print(f"  {fs['pdfs_needed']} paper(s) had no full text: see {out / 'pdfs_needed.csv'} (save each PDF as shown, then re-run)")
     if any(rc.model.provider == "fake" for rc in config.reviewer_configs()):
         print("\nNOTE: this run used the FAKE keyword model. Scores check the plumbing only; they are not results.")
     if config.human == "gold":

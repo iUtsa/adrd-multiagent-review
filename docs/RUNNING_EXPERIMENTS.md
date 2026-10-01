@@ -15,6 +15,23 @@ Everything is built. This is the order to run it once model access is set up, an
 
 `E4_queue_fake.yaml` demonstrates real pausing for a person (see [agents/human-review.md](agents/human-review.md)).
 
+## Two-stage (full-text) configs
+
+| Config | What it is |
+|---|---|
+| `E3_twostage_gemini.yaml` / `E3_twostage_fake.yaml` | E3 with a full-text eligibility stage |
+| **`E4_twostage_gemini.yaml`** / `E4_twostage_fake.yaml` | E4 with a full-text eligibility stage: **the proposed system if the human team judged from full papers** |
+
+Put the team's PDFs in `data/pdfs/<PMID>.pdf` first. Papers without full text are flagged, not excluded, and listed in `pdfs_needed.csv`. See [agents/fulltext-eligibility.md](agents/fulltext-eligibility.md).
+
+## Before every real run: preflight
+
+```bash
+python -m adrd_review.preflight configs/runs/E4_twostage_gemini.yaml
+```
+
+Checks keys, that every model answers a test call, that articles are downloaded, where each full text will come from, that calls fit each model's limits, estimated calls / time / cost, and (for the test set) the freeze. It prints READY or the lines to fix.
+
 ## The protocol
 
 **1. Quick check (3 articles, real model)**

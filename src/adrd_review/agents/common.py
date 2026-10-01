@@ -28,20 +28,30 @@ def render_article(article: Article) -> str:
     lines.append("Abstract:")
     lines.append(article.abstract if article.has_abstract else "(no abstract available)")
     if article.fulltext:
-        lines += ["", "Full text (excerpt from PubMed Central):", article.fulltext]
+        lines += ["", "Full text of the paper:", article.fulltext]
     return "\n".join(lines)
 
 
-def render_screening_rules(codebook: Codebook) -> str:
+def _rule_lines(rules: list) -> list[str]:
+    """Each rule, followed by its worked examples when the codebook has any."""
+    lines = []
+    for r in rules:
+        lines.append(f"- {r.id} {r.name}: {' '.join(r.text.split())}")
+        lines += [f"    Example: {' '.join(e.split())}" for e in r.examples]
+    return lines
+
+
+def render_screening_rules(codebook: Codebook, decision_rule: bool = True) -> str:
     s = codebook.screening
     lines = [f"Review question: {codebook.question.strip()}", ""]
     lines.append("Inclusion rules (all must be met):")
-    lines += [f"- {r.id} {r.name}: {' '.join(r.text.split())}" for r in s.inclusion]
+    lines += _rule_lines(s.inclusion)
     if s.exclusion:
         lines.append("")
         lines.append("Exclusion rules (any one excludes):")
-        lines += [f"- {r.id} {r.name}: {' '.join(r.text.split())}" for r in s.exclusion]
-    lines += ["", f"Decision rule: {' '.join(s.decision_rule.split())}"]
+        lines += _rule_lines(s.exclusion)
+    if decision_rule:
+        lines += ["", f"Decision rule: {' '.join(s.decision_rule.split())}"]
     return "\n".join(lines)
 
 
@@ -69,6 +79,8 @@ def allowed_labels(codebook: Codebook, field: str) -> list[str]:
     """Valid answers for a field: include/exclude for screening, else the dimension's label IDs."""
     if field == "screening":
         return ["include", "exclude"]
+    if field == "eligibility":
+        return ["include", "exclude", "unclear"]
     return codebook.dimensions[field].label_ids
 
 
@@ -76,6 +88,12 @@ def render_field(codebook: Codebook, field: str) -> str:
     """The rules that govern one field, for agents that work on a single field."""
     if field == "screening":
         return render_screening_rules(codebook)
+    if field == "eligibility":
+        return (
+            render_screening_rules(codebook, decision_rule=False)
+            + "\n\nDecision rule (full paper): include only if every inclusion rule is met and no exclusion "
+            "rule applies; exclude if a rule is clearly violated; otherwise unclear (a human decides)."
+        )
     dim = codebook.dimensions[field]
     kind = "any that apply" if dim.multi_label else "at most one"
     lines = [f"Dimension: {field} (choose {kind})", f"Question: {dim.question}", "Labels:"]

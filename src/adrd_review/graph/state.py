@@ -21,12 +21,16 @@ from adrd_review.schemas import (
 class ArticleState(TypedDict, total=False):
     article: Article
     triage: TriageReport
-    fulltext_info: dict  # whether PubMed Central full text was fetched and used
+    fulltext_info: dict  # whether full text was found and used, from which source, or why not
     # Lists marked operator.add are appended to, never overwritten, so parallel
     # reviewers can each add their vote and debate rounds keep earlier votes.
     screening_votes: Annotated[list[Vote], operator.add]
     screening_decision: Decision
     screening_round: int  # debate rounds done on screening (0 = independent votes only)
+    # Stage 2 (two-stage runs): the same reviewers judge the full paper
+    eligibility_votes: Annotated[list[Vote], operator.add]
+    eligibility_decision: Decision
+    eligibility_round: int
     extraction: ExtractionRecord
     annotation_votes: Annotated[list[Vote], operator.add]
     annotation_decisions: dict[str, Decision]

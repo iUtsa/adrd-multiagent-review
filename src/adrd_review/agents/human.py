@@ -35,6 +35,8 @@ class GoldHuman:
             raise KeyError(f"No gold record for PMID {item['pmid']}")
         if item["field"] == "screening":
             return [g.screening]
+        if item["field"] == "eligibility":
+            return [g.fulltext or g.screening]  # the human's decision after reading the full paper
         return list(g.labels.get(item["field"], [])) if g.screening == "include" else []
 
 

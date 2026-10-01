@@ -1,6 +1,6 @@
 # Full-text review: analysis and plan
 
-> Status: **analysis, not yet built** (2026-09-30). Written because the human reviewers judged from full papers, so the agents should too. Nothing in the pipeline changes until this plan is approved.
+> Status: **built 2026-10-01** (approved by Utsa). Build document: [agents/fulltext-eligibility.md](agents/fulltext-eligibility.md). This page keeps the analysis and measurements behind the design. Not yet run with a real model (needs Gemini access).
 
 ## 1. The question
 
@@ -87,7 +87,7 @@ Stage 2 reuses the per-rule judgment form already built for stage 1 (met / not_m
 | A study silently dropped | Unchanged rules: failures are predicted "include"; split-vote exclusions and all "unclear at full text" go to a human |
 | Preview models changing | Exact model IDs recorded per run; freeze before the test set |
 
-## 6. What needs building
+## 6. What was built (all items done 2026-10-01)
 
 | # | Item | Size |
 |---|---|---|

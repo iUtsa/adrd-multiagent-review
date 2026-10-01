@@ -6,6 +6,7 @@ One document per agent. Every agent added to the system gets a document here, wr
 |---|---|---|---|---|
 | Triage | 1. Ingestion | Built (Day 4) | [triage.md](triage.md) | [prompts/triage.md](prompts/triage.md) |
 | Screening reviewer | 2. Screening panel | Built (Day 4); used ×3 in the panel (Day 5) | [screening-reviewer.md](screening-reviewer.md) | [prompts/screening.md](prompts/screening.md) |
+| **Full-text eligibility (stage 2)** | 2b. Full-text assessment | Built (2026-10-01) | [fulltext-eligibility.md](fulltext-eligibility.md) | [prompts/eligibility.md](prompts/eligibility.md) |
 | Extraction | 3. Extraction | Built (Day 4) | [extraction.md](extraction.md) | [prompts/extraction.md](prompts/extraction.md) |
 | Annotation reviewer | 4. Annotation panel | Built (Day 4); used ×3 in the panel (Day 5) | [annotation-reviewer.md](annotation-reviewer.md) | [prompts/annotation.md](prompts/annotation.md) |
 | Reviewer panel + consensus | 2 and 4 | Built (Day 5) | [reviewer-panel.md](reviewer-panel.md) | uses the reviewer prompts + personas |

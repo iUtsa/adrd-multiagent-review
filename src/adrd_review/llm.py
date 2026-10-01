@@ -38,6 +38,8 @@ class ModelConfig(BaseModel):
     temperature: float = 0.0
     max_tokens: int | None = 2048
     requests_per_minute: float | None = None  # stay under free-tier limits
+    tokens_per_minute: int | None = None  # provider limit, if any (preflight checks calls fit)
+    requests_per_day: int | None = None  # provider limit, if any
     price_in_per_mtok: float | None = None  # USD per million input tokens (optional)
     price_out_per_mtok: float | None = None
     # How LangChain asks for structured output: None = provider default, or

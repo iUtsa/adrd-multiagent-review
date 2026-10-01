@@ -32,7 +32,7 @@ def test_excerpt_caps_length_at_a_sentence():
 
 def test_fulltext_is_shown_to_agents_and_quotes_can_come_from_it():
     art = Article(pmid="9", title="T", abstract="Short.", fulltext="METHODS: We recruited 412 adults.")
-    assert "Full text (excerpt from PubMed Central):" in render_article(art)
+    assert "Full text of the paper:" in render_article(art)
     assert check_quotes([EvidenceSpan(quote="We recruited 412 adults.", source="fulltext")], art) == []
 
 

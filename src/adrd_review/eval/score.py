@@ -77,7 +77,22 @@ def evaluate(
     if all(s is not None for s in scores) and any(g_inc):
         screening["wss_at_95"] = wss_at_recall(g_inc, scores, 0.95)
 
-    included = [i for i in ids if gold_by[i].screening == "include"]
+    # Stage 2 (two-stage runs): the decision after reading the full paper, scored against the
+    # gold full-text decision. An article excluded at stage 1 counts as excluded at stage 2.
+    fulltext = None
+    if all(gold_by[i].fulltext for i in ids) and all(pred_by[i].fulltext for i in ids):
+        g_ft = [gold_by[i].fulltext == "include" for i in ids]
+        p_ft = [pred_by[i].fulltext == "include" for i in ids]
+        fulltext = binary_scores(g_ft, p_ft).as_dict()
+        fulltext["cohen_kappa"] = cohen_kappa(g_ft, p_ft)
+        fulltext["gold_includes"], fulltext["predicted_includes"] = sum(g_ft), sum(p_ft)
+
+    # Annotation is scored on the articles the gold standard finally includes: after full text
+    # when both sides have that decision, otherwise after screening.
+    if fulltext is not None:
+        included = [i for i in ids if gold_by[i].fulltext == "include"]
+    else:
+        included = [i for i in ids if gold_by[i].screening == "include"]
     annotation = {}
     for dim, spec in codebook.dimensions.items():
         if not included:
@@ -93,6 +108,7 @@ def evaluate(
         "gold_includes": sum(g_inc),
         "predicted_includes": sum(p_inc),
         "screening": screening,
+        "fulltext": fulltext,
         "annotation": annotation,
         "human_agreement": human_agreement([gold_by[i] for i in ids]),
         "codebook_version": codebook.version,
@@ -118,10 +134,21 @@ def format_report(report: dict, title: str = "") -> str:
     ]
     if "wss_at_95" in s:
         lines.append(f"  WSS@95      {s['wss_at_95']:.3f}")
+    f = report.get("fulltext")
+    if f:
+        lines += [
+            "",
+            "FULL-TEXT ELIGIBILITY (stage 2; include = positive)",
+            f"  recall      {f['recall']:.3f}   ({f['tp']} of {f['tp'] + f['fn']} gold final includes found)",
+            f"  precision   {f['precision']:.3f}   ({f['tp']} of {f['tp'] + f['fp']} predicted final includes correct)",
+            f"  F1          {f['f1']:.3f}",
+            f"  specificity {f['specificity']:.3f}",
+            f"  Cohen kappa {f['cohen_kappa']:.3f}",
+        ]
     for dim, a in report["annotation"].items():
         lines += [
             "",
-            f"ANNOTATION: {dim} (on gold includes)",
+            f"ANNOTATION: {dim} (on gold {'final ' if f else ''}includes)",
             f"  micro F1 {a['micro']['f1']:.3f}   macro F1 {a['macro']['f1']:.3f}   exact match {a['exact_match']:.3f}",
             f"  {'label':28} {'P':>6} {'R':>6} {'F1':>6} {'kappa':>6} {'gold n':>7}",
         ]

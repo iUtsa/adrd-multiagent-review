@@ -19,6 +19,7 @@ dependencies = [
     "requests",
     "pandas",
     "openpyxl",
+    "pypdf",  # read the team's PDFs for full-text review
     # evaluation
     "scikit-learn",
     "statsmodels",

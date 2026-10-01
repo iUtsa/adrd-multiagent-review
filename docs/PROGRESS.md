@@ -4,6 +4,31 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-10-01 — Two-stage review: agents now read the full paper
+
+Decision (Utsa): the human reviewers judged from full papers, so the agents should too. Analysis: [FULLTEXT_PLAN.md](FULLTEXT_PLAN.md). Build document: [agents/fulltext-eligibility.md](agents/fulltext-eligibility.md).
+
+**Measured on the professor's 1,855 search results:** ~61% have full text in PubMed Central, ~5% free elsewhere, **~34% paywalled** (need the team's PDFs). A full paper is ~9,700 tokens (max ~17,000 in a sample of 57).
+
+**Built:**
+- **Full-text sources** (`tools/fulltext.py`, `tools/pdf.py`): team PDF → PubMed Central → open-access PDF → none (flagged, never excluded, listed in `pdfs_needed.csv` with a link). PDF quality check; reference lists dropped; long papers put Methods/Results first.
+- **Stage 2 full-text eligibility agent** (`agents/eligibility.py`): same per-rule form as stage 1, stricter decision (include only if every inclusion rule is met; unclear → human). Panel, debate, adjudicator, verifier and human review all apply to it.
+- **Pipeline** rewritten with the stage-2 branch; extraction and annotation read the full paper. New escalation reasons `no_fulltext`, `unclear_fulltext`. The verifier no longer re-checks a human's decision.
+- **Scoring**: stage 2 scored against the gold `fulltext` column; annotation scored on gold final includes.
+- **Preflight check** (`python -m adrd_review.preflight <config>`): keys, live model test calls, articles, full-text sources, call sizes vs token limits, calls vs daily limits, time, cost, freeze, disk.
+- Codebook examples are now rendered into prompts when present.
+- Configs `E3_twostage_*`, `E4_twostage_*`; Groq configs carry their limits (8,000 tokens/min, 1,000 requests/day).
+
+**Checked:**
+- Real papers: PubMed Central path works; paywalled and blocked papers fall through with a reason and link; the PDF reader extracts clean text from a real two-column academic PDF and rejects non-PDF files.
+- Preflight: Groq panel READY (three models answered live test calls); Gemini two-stage NOT READY (no key), ~$3 for 40 articles; full text on Groq refused (11,700-token call vs 8,000 tokens/min).
+- Fake two-stage runs on calibration: 23–24 reached stage 2; 1 PubMed Central, 1 open-access PDF, 21–22 flagged with no full text (old placeholder papers); in E4 the gold "human" answered them (stage-2 precision 1.00, κ 0.90).
+- **Tests: 123 pass.**
+
+**Not yet done:** any real-model run of stage 2 (needs Gemini); the Groq re-run of stage 1 (waiting for the go-ahead).
+
+---
+
 ## 2026-09-30 — First real-model run, what it showed, and the fixes
 
 **Groq key added** (free tier; in `.env`, not in git). Models: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b` (Qwen needs function-calling structured output). Limits: 1,000 requests/day, 8,000 tokens/min per model (~3 calls/min). Configs `E1_groq`, `E2_groq`, `E2_mixed`; rate-limit backoff 15–60 s.

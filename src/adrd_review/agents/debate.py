@@ -91,10 +91,11 @@ def run(
     warnings = []
     if len(labels) != len(ans.labels):
         warnings.append(f"invalid labels dropped: {[x for x in ans.labels if x not in valid]}")
-    if field == "screening" and len(labels) != 1:
-        warnings.append(f"screening needs exactly one answer, got {ans.labels}; kept previous answer")
+    single_answer = field in ("screening", "eligibility")
+    if single_answer and len(labels) != 1:
+        warnings.append(f"{field} needs exactly one answer, got {ans.labels}; kept previous answer")
         labels = own.labels
-    elif field != "screening" and not codebook.dimensions[field].multi_label and len(labels) > 1:
+    elif not single_answer and not codebook.dimensions[field].multi_label and len(labels) > 1:
         warnings.append(f"single-label dimension: kept {labels[0]!r}")
         labels = labels[:1]
 

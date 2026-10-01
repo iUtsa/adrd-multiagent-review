@@ -100,12 +100,19 @@ def default_responders(codebook=None, style: str = "keyword-rules") -> dict:
             checks.append(InclusionCheck(rule_id="I2", status="met" if dem else "not_met", quote=dem or title))
         else:
             checks.append(InclusionCheck(rule_id="I2", status="unclear"))
+        full_paper = "FULL PAPER" in _system  # stage 2: the eligibility prompt
+        acc = _sentence_with(text, ACCURACY)
         if style == "keyword-strict":
-            acc = _sentence_with(text, ACCURACY)
             checks.append(InclusionCheck(rule_id="I3", status="met" if acc else "not_met", quote=acc or title))
+        elif full_paper and acc:
+            checks.append(InclusionCheck(rule_id="I3", status="met", quote=acc))
         else:
             checks.append(InclusionCheck(rule_id="I3", status="unclear"))
-        checks.append(InclusionCheck(rule_id="I4", status="unclear"))
+        setting = next((q for q in (_sentence_with(text, p) for p in SETTINGS.values()) if q), None)
+        if full_paper and setting:
+            checks.append(InclusionCheck(rule_id="I4", status="met", quote=setting))
+        else:
+            checks.append(InclusionCheck(rule_id="I4", status="unclear"))
         return ScreeningAnswer(
             inclusion=checks,
             exclusion=[ExclusionCheck(rule_id=r, status="unclear") for r in ("E1", "E2", "E3")],

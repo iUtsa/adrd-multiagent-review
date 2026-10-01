@@ -232,7 +232,9 @@ class CuratorAnswer(BaseModel):
 # Day 6-8 pipeline records
 # --------------------------------------------------------------------------- #
 
-EscalationReason = Literal["split_exclusion", "low_confidence", "verifier_fail"]
+EscalationReason = Literal[
+    "split_exclusion", "low_confidence", "verifier_fail", "no_fulltext", "unclear_fulltext"
+]
 
 
 class Escalation(BaseModel):
