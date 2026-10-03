@@ -9,7 +9,9 @@ Each run writes to data/runs/<name>/<timestamp>/:
                       human answer, one article per line
     usage.jsonl       one line per model call (tokens, cost, seconds, cached)
     failures.json     articles that errored (predicted 'include' so none are silently dropped)
-    report.json       scores, cost/time, panel agreement, escalations, debate statistics
+    report.json       scores, cost/time, panel agreement, escalations, debate statistics, and the
+                      flow: how many articles passed each stage and why the rest were excluded
+    flow.png          the flow as a PRISMA-style diagram
     run_meta.json     config, codebook/gold/split hashes, git commit, timings
 With `human: queue`, articles needing a person pause; answer them with
     python -m adrd_review.human_review data/runs/<name>/<timestamp>
@@ -37,6 +39,7 @@ from adrd_review.agents.human import GoldHuman, QueueHuman
 from adrd_review.codebook import Codebook, load_codebook
 from adrd_review.consensus import panel_agreement
 from adrd_review.eval.metrics import usage_summary
+from adrd_review.eval.flow import flow_counts, flow_figure, format_flow
 from adrd_review.eval.score import evaluate, format_report
 from adrd_review.freeze import prompts_sha
 from adrd_review.gold import GoldRecord, file_sha256, load_gold, write_gold
@@ -70,9 +73,12 @@ class RunConfig(BaseModel):
     condition: str = "E1"
     description: str = ""
     codebook: str = "configs/codebook.yaml"
-    gold: str = "data/gold/gold.csv"
+    # A labelled run uses the gold file and split. An UNLABELLED run (e.g. the professor's 1,855 search
+    # results) sets `gold: null` and `pmids_file`: it reports how many articles pass each stage, no scores.
+    gold: str | None = "data/gold/gold.csv"
     split: str = "configs/splits/placeholder.json"
     part: str = "calibration"
+    pmids_file: str | None = None  # one PMID per line; used instead of the split when set
     concurrency: int = 4
     cache_dir: str = "data/cache/llm"
     corpus_dir: str = "data/corpus"
@@ -97,6 +103,8 @@ class RunConfig(BaseModel):
     # paper (team PDF -> PubMed Central -> open-access PDF) and a strict full-text eligibility stage;
     # extraction and annotation then read the full paper. Needs a model with a large enough limit.
     eligibility: Literal["off", "fulltext"] = "off"
+    # Title screening before the abstract (the professor's team: titles -> abstracts -> full text)
+    title_stage: bool = False
     eligibility_max_chars: int = 80000
     pdf_dir: str = "data/pdfs"
     # Reviewer weights computed on a calibration run (python -m adrd_review.eval.weights);
@@ -148,6 +156,8 @@ def build_graph(config: RunConfig, codebook: Codebook, gold: list[GoldRecord], c
         )
         for rc in config.reviewer_configs()
     ]
+    if config.human == "gold" and not gold:
+        raise ValueError("human: gold needs a gold standard; use none or queue for an unlabelled corpus")
     human = {"none": None, "gold": GoldHuman({g.pmid: g for g in gold}), "queue": QueueHuman()}[config.human]
     if config.human == "queue" and checkpointer is None:
         raise ValueError("human: queue needs a checkpointer")
@@ -161,6 +171,7 @@ def build_graph(config: RunConfig, codebook: Codebook, gold: list[GoldRecord], c
         human=human,
         fulltext=config.fulltext,
         fulltext_max_chars=config.fulltext_max_chars,
+        title_stage=config.title_stage,
         eligibility=config.eligibility == "fulltext",
         eligibility_max_chars=config.eligibility_max_chars,
         fulltext_source=_fulltext_source(config),
@@ -255,10 +266,25 @@ def run_articles(graph, articles: list[Article], concurrency: int = 4, threaded_
                 print(f"  [{i}/{len(articles)}] {state['article'].pmid} waiting for a human", file=sys.stderr)
             else:
                 states.append(state)
-                d = state["screening_decision"]
-                esc = f"  ({len(state.get('escalations', []))} escalated)" if state.get("escalations") else ""
-                print(f"  [{i}/{len(articles)}] {state['article'].pmid} {d.labels[0]} [{d.method}]{esc}", file=sys.stderr)
+                print(f"  [{i}/{len(articles)}] {state['article'].pmid} {_progress(state)}", file=sys.stderr)
     return states, failures, paused
+
+
+def _progress(state: dict) -> str:
+    """One line per finished article: how far it got."""
+    d = state["screening_decision"]
+    if d.method == "title_excluded":
+        where = "excluded at title"
+    elif d.labels != ["include"]:
+        where = f"excluded at abstract [{d.method}]"
+    elif state.get("eligibility_decision") is not None:
+        e = state["eligibility_decision"]
+        where = {"include": "INCLUDED", "exclude": "excluded at full text", "unclear": "kept, a person decides"}[e.labels[0]]
+        where += f" [{e.method}]"
+    else:
+        where = f"passed abstract [{d.method}]"
+    esc = f"  ({len(state.get('escalations', []))} escalated)" if state.get("escalations") else ""
+    return where + esc
 
 
 def _dump(obj):
@@ -328,8 +354,15 @@ def write_outputs(out: Path, config: RunConfig, codebook: Codebook, gold: list[G
     (out / "failures.json").write_text(json.dumps(failures, indent=2) + "\n")
 
     report: dict = {"pending_human": paused}
-    if not paused:
+    if not paused and gold:
         report = evaluate(gold, [p for p in preds], codebook, pmids)
+    elif not gold:
+        report["unlabelled"] = True  # no gold standard: counts only, no scores
+    report["flow"] = flow_counts(states, len(failures), codebook, {g.pmid: g for g in gold} if gold else None)
+    try:
+        flow_figure(report["flow"], out / "flow.png", f"{config.name}: {len(pmids)} articles")
+    except Exception as e:  # a figure is never worth failing a run over
+        print(f"(flow figure not drawn: {type(e).__name__}: {e})", file=sys.stderr)
     report["usage"] = usage_summary(usages, len(pmids), wall_seconds=round(wall, 2))
     report["failures"] = len(failures)
     report["panel_agreement"] = panel_agreement(states, [r.id for r in reviewers], list(codebook.dimensions))
@@ -382,9 +415,11 @@ def print_summary(report: dict, config: RunConfig, part: str, out: Path, usages_
     if report.get("pending_human"):
         print(f"\n{len(report['pending_human'])} article(s) are waiting for a human. Answer them with:")
         print(f"  python -m adrd_review.human_review {out}")
-    else:
+    elif not report.get("unlabelled"):
         print()
         print(format_report(report, f"{config.name} on {part}"))
+    print()
+    print(format_flow(report["flow"]))
     u = report["usage"]
     has_prices = u["total"]["cost_usd"] not in (0, 0.0, None)
     cost = f"${u['total']['cost_usd']:.4f}" if has_prices else "n/a (no prices in config)"
@@ -399,7 +434,7 @@ def print_summary(report: dict, config: RunConfig, part: str, out: Path, usages_
         print(f"\nPANEL AGREEMENT (independent votes of {', '.join(pa['reviewers'])})")
         for fld, v in pa.items():
             if fld != "reviewers":
-                print(f"  {fld:12} Fleiss kappa {v['fleiss_kappa']:.3f}   unanimous {v['unanimous']}/{v['items']}")
+                print(f"  {fld:17} Fleiss kappa {v['fleiss_kappa']:.3f}   unanimous {v['unanimous']}/{v['items']}")
     print("\nHOW DECISIONS WERE REACHED")
     print("  " + ", ".join(f"{k} {n}" for k, n in report["decision_methods"].items()))
     e = report["escalations"]
@@ -422,6 +457,16 @@ def print_summary(report: dict, config: RunConfig, part: str, out: Path, usages_
     print(f"\nSaved in {out}/")
 
 
+def select_pmids(config: RunConfig, part: str, gold: list[GoldRecord]) -> list[str]:
+    """The articles to run: the PMID list of an unlabelled corpus, or one part of the gold split."""
+    if config.pmids_file:
+        lines = Path(config.pmids_file).read_text().split()
+        return list(dict.fromkeys(p.strip() for p in lines if p.strip().isdigit()))
+    if not gold:
+        raise ValueError("A run needs a gold file (labelled) or a pmids_file (unlabelled)")
+    return load_split(config.split)[part] if part != "all" else [g.pmid for g in gold]
+
+
 def execute(
     config: RunConfig,
     part: str | None = None,
@@ -440,8 +485,8 @@ def execute(
         if problems:
             raise SystemExit("Refusing to run on the TEST set: " + "; ".join(problems))
     codebook: Codebook = load_codebook(config.codebook)
-    gold = load_gold(config.gold, codebook)
-    pmids = load_split(config.split)[part] if part != "all" else [g.pmid for g in gold]
+    gold = load_gold(config.gold, codebook) if config.gold else []
+    pmids = select_pmids(config, part, gold)
     if limit:
         pmids = pmids[:limit]
 
@@ -479,7 +524,8 @@ def execute(
         "codebook_version": codebook.version,
         "codebook_sha256": codebook.sha256,
         "prompts_sha256": prompts_sha(),  # agent code + prompts: runs are only averaged if this matches
-        "gold_sha256": file_sha256(config.gold),
+        "gold_sha256": file_sha256(config.gold) if config.gold else None,
+        "pmids_file": config.pmids_file,
         "split_file": config.split,
         "config": config.model_dump(),
     }

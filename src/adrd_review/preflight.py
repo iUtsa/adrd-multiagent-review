@@ -4,7 +4,7 @@
     python -m adrd_review.preflight configs/runs/E2_groq.yaml --part calibration --no-calls
 
 Checks, each reported as PASS / WARN / FAIL:
-  1. config, codebook, gold file and split load and agree
+  1. config, codebook, gold file and split (or the PMID list of an unlabelled corpus) load and agree
   2. API keys are set for every provider the config uses
   3. every model actually answers a tiny structured call (skip with --no-calls)
   4. every article is downloaded
@@ -30,19 +30,22 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel
 
-from adrd_review.agents import eligibility, screening
+from adrd_review.agents import eligibility, screening, title_screening
 from adrd_review.agents.common import render_article
 from adrd_review.codebook import load_codebook
 from adrd_review.gold import load_gold
-from adrd_review.graph.runner import RunConfig, load_run_config
+from adrd_review.graph.runner import RunConfig, load_run_config, select_pmids
 from adrd_review.llm import LangChainLLM, ModelConfig, ResponseCache
-from adrd_review.split import load_split
 from adrd_review.tools.pubmed import load_cached
 
 KEYS = {"google": "GOOGLE_API_KEY", "groq": "GROQ_API_KEY", "openai": "OPENAI_API_KEY",
         "anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
 FULLTEXT_TOKENS = 9700  # median body of a real paper (docs/FULLTEXT_PLAN.md); 90th pct ~14,100
 OUTPUT_TOKENS = 600
+# Unlabelled corpora: assumed share passing each stage, for the call/cost estimate only (deliberately
+# high, so the estimate is an upper bound). Labelled runs use the gold standard's include rate instead.
+ASSUMED_TITLE_PASS = 0.8
+ASSUMED_ABSTRACT_PASS = 0.5
 
 
 class Ping(BaseModel):
@@ -65,6 +68,7 @@ class Report:
 def models_by_role(cfg: RunConfig) -> dict[str, list[ModelConfig]]:
     panel = cfg.reviewer_configs()
     out = {
+        **({"title": [r.model for r in panel]} if cfg.title_stage else {}),
         "triage": [cfg.roles["triage"].model],
         "extraction": [cfg.roles["extraction"].model],
         "screening": [r.model for r in panel],
@@ -86,16 +90,19 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
     try:
         cfg = load_run_config(config_path)
         codebook = load_codebook(cfg.codebook)
-        gold = load_gold(cfg.gold, codebook)
+        gold = load_gold(cfg.gold, codebook) if cfg.gold else []
         part = part or cfg.part
-        pmids = load_split(cfg.split)[part] if part != "all" else [g.pmid for g in gold]
+        pmids = select_pmids(cfg, part, gold)
         if limit:
             pmids = pmids[:limit]
-        missing_gold = [p for p in pmids if p not in {g.pmid for g in gold}]
+        missing_gold = [p for p in pmids if p not in {g.pmid for g in gold}] if gold else []
         if missing_gold:
             rep.add("FAIL", f"{len(missing_gold)} split PMIDs are not in the gold file")
         else:
-            rep.add("PASS", f"config '{cfg.name}' ({cfg.condition}), codebook {codebook.version}, {len(pmids)} {part} articles")
+            what = f"{part} articles" if gold else f"articles from {cfg.pmids_file} (unlabelled: counts only, no scores)"
+            rep.add("PASS", f"config '{cfg.name}' ({cfg.condition}), codebook {codebook.version}, {len(pmids)} {what}")
+        if codebook.status == "draft":
+            rep.add("WARN", f"codebook {codebook.version} is a DRAFT: results are not reportable until the professor approves it")
     except Exception as e:
         rep.add("FAIL", f"could not load config/codebook/gold/split: {type(e).__name__}: {e}")
         return rep
@@ -155,10 +162,11 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
     art_tokens = statistics.median(len(render_article(a)) for a in sample) / 4 if sample else 600
     sys_tokens = len(screening.system_prompt(codebook)) / 4
     abstract_call = int(sys_tokens + art_tokens + OUTPUT_TOKENS)
+    title_call = int(len(title_screening.system_prompt(codebook)) / 4 + 40 + OUTPUT_TOKENS)
     fulltext_call = int(len(eligibility.system_prompt(codebook)) / 4 + art_tokens + FULLTEXT_TOKENS + OUTPUT_TOKENS)
     fulltext_roles = {"eligibility", "extraction", "annotation", "adjudicator", "verifier"} if two_stage else set()
     for role, ms in roles.items():
-        size = fulltext_call if role in fulltext_roles else abstract_call
+        size = fulltext_call if role in fulltext_roles else title_call if role == "title" else abstract_call
         for m in ms:
             if m.tokens_per_minute and size > m.tokens_per_minute:
                 rep.add("FAIL", f"{m.label} as {role}: one call is ~{size:,} tokens but the limit is {m.tokens_per_minute:,} tokens/min")
@@ -169,14 +177,20 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
     # 7. calls, daily limits, time
     n = len(pmids)
     gold_by = {g.pmid: g for g in gold}
-    kept = min(1.0, 1.5 * sum(gold_by[p].screening == "include" for p in pmids) / max(1, n))  # share passing stage 1 (padded)
-    per_role = {"triage": n, "screening": n, "eligibility": n * kept, "extraction": n * kept, "annotation": n * kept,
-                "adjudicator": 0.4 * n, "verifier": n}
+    if gold:
+        kept = min(1.0, 1.5 * sum(gold_by[p].screening == "include" for p in pmids) / max(1, n))  # share passing stage 1 (padded)
+    else:
+        kept = ASSUMED_ABSTRACT_PASS * (ASSUMED_TITLE_PASS if cfg.title_stage else 1)
+        rep.add("WARN", f"unlabelled corpus: the estimate assumes {ASSUMED_TITLE_PASS:.0%} pass titles and "
+                        f"{ASSUMED_ABSTRACT_PASS:.0%} of those pass abstracts (an upper bound; real counts come from the run)")
+    screened = n * (ASSUMED_TITLE_PASS if cfg.title_stage else 1)  # articles reaching abstract screening
+    per_role = {"title": n, "triage": screened, "screening": screened, "eligibility": n * kept, "extraction": n * kept,
+                "annotation": n * kept, "adjudicator": 0.4 * screened, "verifier": screened}
     calls_by: dict[str, float] = defaultdict(float)
     tokens_by: dict[str, float] = defaultdict(float)
     cfg_by: dict[str, ModelConfig] = {}
     for role, ms in roles.items():
-        size = fulltext_call if role in fulltext_roles else abstract_call
+        size = fulltext_call if role in fulltext_roles else title_call if role == "title" else abstract_call
         for m in ms:
             calls_by[m.label] += per_role[role]
             tokens_by[m.label] += per_role[role] * size

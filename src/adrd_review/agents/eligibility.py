@@ -22,7 +22,7 @@ from adrd_review.llm import LLM
 from adrd_review.schemas import Article, ScreeningAnswer, Usage, Vote
 
 SYSTEM = """\
-You are a reviewer assessing the FULL PAPER for eligibility in a scoping review of dementia screening research.
+You are a reviewer assessing the FULL PAPER for eligibility in a scoping review of {topic}.
 {persona}
 You do NOT decide include or exclude. You judge each rule separately against the whole paper, and the
 decision is then made from your judgments.
@@ -57,6 +57,7 @@ REMINDER = (
 
 def system_prompt(codebook: Codebook, persona: str | None = None) -> str:
     return SYSTEM.format(
+        topic=codebook.topic,
         persona=f"Your perspective: {persona}\n" if persona else "",
         rules=render_screening_rules(codebook, decision_rule=False),
         evidence_rules=EVIDENCE_RULES,

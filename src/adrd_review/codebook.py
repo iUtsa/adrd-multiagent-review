@@ -17,11 +17,15 @@ class Rule(BaseModel):
     text: str
     source: list[str] = Field(default_factory=list)
     examples: list[str] = Field(default_factory=list)
+    # Used ONLY by the keyword stand-in model (fake_model.py) so it can follow any codebook;
+    # never shown to real models. A regular expression, case-insensitive.
+    keywords: str | None = None
 
 
 class Label(BaseModel):
     id: str
     definition: str = ""
+    keywords: str | None = None  # keyword stand-in model only (see Rule.keywords)
 
 
 class Dimension(BaseModel):
@@ -47,6 +51,8 @@ class Annotation(BaseModel):
 class Codebook(BaseModel):
     version: str
     status: str = ""
+    # Named in every agent's opening line ("... a scoping review of <topic>").
+    topic: str = "dementia screening research"
     question: str = ""
     sources: dict[str, str] = Field(default_factory=dict)
     screening: Screening

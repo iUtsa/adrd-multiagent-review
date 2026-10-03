@@ -4,6 +4,39 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-10-03 — Three stages like the human team (titles → abstracts → full text), stage counts, step 4 finished
+
+**Step 4 finished: `E2_groq`, all 40 calibration articles, 0 failures** (`data/runs/E2_groq/20261002-113941/`).
+
+| | Recall | Precision | F1 | Specificity | κ | WSS@95 |
+|---|---|---|---|---|---|---|
+| Keyword baseline | 0.769 | 0.435 | 0.556 | 0.519 | 0.240 | – |
+| **E2_groq (3 free models)** | **0.769** (10/13) | **0.769** | **0.769** | **0.889** | **0.658** | **0.475** |
+
+- Panel: Fleiss' κ 0.597, 29 of 40 unanimous; 7 split-vote exclusions flagged for a human. Instrument labels micro F1 0.800; setting 0.143 (placeholder label problem, see below).
+- **All 3 missed gold includes were split votes flagged for a human** (so in E4 a person would have seen them), and Cochrane itself excluded all 3 after reading the full paper.
+- Against Cochrane's **final** (full-text) includes: the panel kept **6 of 6** (keyword baseline 5 of 6) while passing only 13 of 40 articles to full text (baseline 23 of 40).
+- The partial result on 29 articles (recall 0.90) fell to 0.77 on all 40: the last 11 articles held 3 harder includes. Placeholder data and free models: a calibration result, not a study result.
+
+**Three-stage review (the professor's description of the human process).** Build doc: [agents/title-screening.md](agents/title-screening.md).
+- **Title screening agent** (`agents/title_screening.py`): title only; same per-rule form; quotes must come from the title; the panel excludes only if every reviewer excludes (`consensus.combine_title`). `title_stage: true` in a config; off by default (earlier configs unchanged).
+- **Stage counts** (`eval/flow.py`): every run now reports a PRISMA flow: identified → title (screened / excluded / passed, reasons) → abstract (same, plus person-decided) → full text (sought / retrieved by source / not retrieved / assessed / excluded, reasons, still open) → included (confirmed / waiting for a person). With a gold standard it also counts the gold includes each stage removed. Printed, saved in `report.json` and drawn as `flow.png`; `python -m adrd_review.eval.flow <run dir>` re-prints it.
+- **Unlabelled corpora**: `gold: null` + `pmids_file:` runs any PMID list and reports counts without scores (the professor's 1,855 search results have no labels).
+- **Draft codebook for the real topic**: `configs/codebook_aiml_draft.yaml` (v0.1.0-draft): I1 ADRD, I2 AI/ML, I3 detection/diagnosis/monitoring/prediction, I4 older adults (from the four concept groups of her query); E1 not original research, E2 not human (PROPOSED); annotation dimensions data modality / population / dataset source (PROPOSED, from the abstract's categories). **Needs the professor's approval**; counts made with it are not reportable until then. Generated prompt: [agents/prompts/screening_aiml_draft.md](agents/prompts/screening_aiml_draft.md).
+- The codebook now sets the topic named in every prompt (`topic:`); the placeholder's prompts are byte-identical, so cached answers stay valid. The stand-in model follows any codebook with `keywords:` (used by the stand-in only, never shown to real models).
+- Preflight understands title stages and unlabelled corpora.
+- Configs: `E4_threestage_{fake,gemini}`, `PROF_search_{fake,gemini}`.
+
+**Checked:**
+- `E4_threestage_fake`, 40 calibration articles: 40 titles screened, 0 excluded (the placeholder came from a targeted search: every title is on topic); 40 abstracts → 24 passed; 24 full texts sought, 2 retrieved; 5 included, gold final includes kept 5 of 6.
+- `PROF_search_fake`, **all 1,855 search results, stand-in model** (plumbing check, NOT results): 41 excluded at title, 302 at abstract, 1,512 sought at full text, 909 retrieved (907 PubMed Central, 2 open-access PDF), 603 without full text (flagged). 24,303 calls in 105 s, 0 failures.
+- Preflight for `PROF_search_gemini`: about 18,800 calls, ~9 hours at 10 requests/min per model, **about $143 upper bound** (assumes 80% pass titles, 50% of those pass abstracts); a 100-article pilot ≈ $8, 30 min.
+- **Tests: 138 pass** (12 new in `tests/test_three_stage.py`).
+
+**Waiting for:** Gemini key (real counts for the 1,855); the professor's approval of the draft codebook (or her own); the team's PDFs for papers without free full text.
+
+---
+
 ## 2026-10-01 — Step 4 (real re-run after the fix) and the professor's papers collected
 
 **Professor's keyword search collected** (`python scripts/fetch_search_corpus.py`): 1,855 abstracts in `data/corpus_search/`; **full text for 1,118 (60%)**: 1,112 PubMed Central + 6 open-access PDFs. No full text for 737: 591 paywalled, 143 with a free copy that needs a manual download, 3 other. All 737 are in `data/search/pdfs_needed.csv` (link + file name to save as). Typical paper ~8,600 tokens; 22 exceed 80,000 characters (one is ~285,000 tokens), handled by the size cap.

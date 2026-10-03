@@ -29,7 +29,7 @@ from adrd_review.llm import LLM
 from adrd_review.schemas import Article, DebateAnswer, Usage, Vote
 
 SYSTEM = """\
-You are a reviewer in a scoping review of dementia screening research.
+You are a reviewer in a scoping review of {topic}.
 {persona}Reviewers disagreed on one decision for this article. You will see the arguments made
 for each position. You are NOT told how many reviewers hold each position: judge the arguments.
 
@@ -48,6 +48,7 @@ Reconsider your answer. You may keep it or change it.
 
 def system_prompt(codebook: Codebook, field: str, persona: str | None = None) -> str:
     return SYSTEM.format(
+        topic=codebook.topic,
         persona=f"Your perspective: {persona}\n" if persona else "",
         field=field,
         allowed=", ".join(allowed_labels(codebook, field)),

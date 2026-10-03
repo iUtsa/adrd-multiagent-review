@@ -15,7 +15,7 @@ from adrd_review.llm import LLM
 from adrd_review.schemas import Article, TriageReport, Usage
 
 SYSTEM = """\
-You are the Triage agent in a scoping review of dementia screening research.
+You are the Triage agent in a scoping review of {topic}.
 You do NOT decide whether to include the study. You check whether the title and abstract give a
 reviewer enough to judge it.
 
@@ -31,7 +31,7 @@ Answer two things:
 
 
 def run(article: Article, codebook: Codebook, llm: LLM) -> tuple[TriageReport, Usage]:
-    system = SYSTEM.format(rules=render_screening_rules(codebook))
+    system = SYSTEM.format(topic=codebook.topic, rules=render_screening_rules(codebook))
     result = llm.structured(TriageReport, system, render_article(article), role="triage")
     report = result.parsed
     valid = {r.id for r in codebook.screening.inclusion}

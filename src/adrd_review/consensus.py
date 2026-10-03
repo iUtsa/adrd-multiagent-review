@@ -78,6 +78,34 @@ def combine_screening(votes: list[Vote], weights: dict[str, float] | None = None
     )
 
 
+def combine_title(votes: list[Vote], weights: dict[str, float] | None = None) -> Decision:
+    """Title screening: the article is excluded only if EVERY reviewer excludes it.
+
+    One reviewer keeping it is enough (the usual rule for human title screening: the
+    first pass removes only the obviously irrelevant). No adjudicator, no human: a kept
+    article simply goes on to abstract screening. `include_score` as for screening.
+    """
+    if not votes:
+        raise ValueError("No title votes to combine")
+    weights = weights or {}
+    total = sum(_weight(v, weights) for v in votes)
+    score = sum(_weight(v, weights) * _include_probability(v) for v in votes) / total
+    keep = [v for v in votes if v.labels == ["include"]]
+    if len(votes) == 1:
+        label, method = votes[0].labels[0], "single"
+    elif not keep:
+        label, method = "exclude", "unanimous"
+    else:
+        label, method = "include", "unanimous" if len(keep) == len(votes) else "any_include"
+    return Decision(
+        field="title",
+        labels=[label],
+        method=method,
+        confidence=round(len(keep) / len(votes) if label == "include" else 1.0, 4),
+        include_score=round(score, 4),
+    )
+
+
 def combine_eligibility(votes: list[Vote], weights: dict[str, float] | None = None) -> Decision:
     """Full-text eligibility: include / exclude / unclear.
 
@@ -167,10 +195,10 @@ def panel_agreement(states: list[dict], reviewer_ids: list[str], fields: list[st
     if len(reviewer_ids) < 2:
         return None
     out: dict = {"reviewers": reviewer_ids}
-    for field in ["screening", *fields]:
+    for field in ["title", "screening", "eligibility", *fields]:
         rows = []
         for s in states:
-            votes = s.get("screening_votes", []) if field == "screening" else s.get("annotation_votes", [])
+            votes = s.get(f"{field}_votes", []) if field in ("title", "screening", "eligibility") else s.get("annotation_votes", [])
             by = {v.reviewer_id: "|".join(sorted(v.labels)) for v in votes if v.field == field and v.round == 0}
             if all(r in by for r in reviewer_ids):
                 rows.append([by[r] for r in reviewer_ids])

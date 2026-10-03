@@ -22,6 +22,9 @@ class ArticleState(TypedDict, total=False):
     article: Article
     triage: TriageReport
     fulltext_info: dict  # whether full text was found and used, from which source, or why not
+    # Title screening (three-stage runs): titles only, before triage and abstract screening
+    title_votes: Annotated[list[Vote], operator.add]
+    title_decision: Decision
     # Lists marked operator.add are appended to, never overwritten, so parallel
     # reviewers can each add their vote and debate rounds keep earlier votes.
     screening_votes: Annotated[list[Vote], operator.add]

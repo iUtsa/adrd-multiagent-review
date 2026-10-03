@@ -8,7 +8,7 @@ from adrd_review.llm import LLM
 from adrd_review.schemas import AnnotationAnswer, Article, ExtractionRecord, Usage, Vote
 
 SYSTEM = """\
-You are a reviewer annotating included studies for a scoping review of dementia screening research.
+You are a reviewer annotating included studies for a scoping review of {topic}.
 {persona}
 For each dimension below, choose labels using ONLY the label IDs listed for it, spelled exactly.
 Leave the labels empty if the text does not support any of them.
@@ -22,6 +22,7 @@ Return one entry per dimension, in the order given."""
 
 def system_prompt(codebook: Codebook, persona: str | None = None) -> str:
     return SYSTEM.format(
+        topic=codebook.topic,
         persona=f"Your perspective: {persona}\n" if persona else "",
         dimensions=render_dimensions(codebook),
         evidence_rules=EVIDENCE_RULES,

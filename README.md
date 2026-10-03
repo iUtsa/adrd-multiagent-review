@@ -16,6 +16,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design, diagrams a
 
 **All agents are built** (Days 1–8 of the [10-day plan](docs/10_DAY_PLAN.md)): PubMed tool, codebook, gold standard, frozen split, scorer, and every agent (triage, 3-reviewer panel, extraction, annotation, adjudicator, verifier, human review, Codebook Curator, debate) in one LangGraph pipeline covering E1–E4 and D. Everything runs today with a stand-in model. Models: **Gemini** (professor's licence), see [docs/MODELS.md](docs/MODELS.md). The analysis tools are built too (repeats, results table, figures, error analysis, reviewer weights, cost, retrieval check, PubMed Central full text, converter for the professor's file). **Next: real Gemini runs** once access is set up ([docs/RUNNING_EXPERIMENTS.md](docs/RUNNING_EXPERIMENTS.md)). **The gold standard and codebook are currently a public placeholder** (Cochrane dementia-screening decisions from CLEF 2017) until the professor's data arrives; see [docs/GOLD_STANDARD.md](docs/GOLD_STANDARD.md). Progress log: [docs/PROGRESS.md](docs/PROGRESS.md).
 
+**Three stages, like the human team** (2026-10-03): titles → abstracts → full papers, with a PRISMA flow in every run (how many articles pass each stage, and why the rest were excluded). The professor's 1,855 search results run through it with a **draft** AI/ML codebook awaiting her approval ([docs/agents/title-screening.md](docs/agents/title-screening.md)). First real-model calibration (3 free Groq models, 40 articles): recall 0.77, precision 0.77, κ 0.66, vs keyword baseline precision 0.44, κ 0.24.
+
 ## Quick start
 
 ```bash
@@ -28,6 +30,7 @@ python scripts/build_placeholder_gold.py   # gold standard + 268 articles into d
 python -m pytest                           # run the tests
 python scripts/score_baselines.py          # score the non-AI baselines
 python -m adrd_review.graph.runner configs/runs/E4_fake.yaml   # run the full proposed system (no key needed)
+python -m adrd_review.graph.runner configs/runs/PROF_search_fake.yaml   # professor's 1,855 papers, 3 stages, counts per stage
 ```
 
 ## Docs
@@ -73,11 +76,12 @@ src/adrd_review/
   tools/pdf.py            read the team's PDFs (with a quality check)
   tools/fulltext.py       full-text source ladder: team PDF -> PMC -> open-access PDF
   preflight.py            check keys, models, limits, cost before a run
-  agents/                 triage, screening, eligibility (full text), extraction, annotation, adjudicator,
+  agents/                 title screening, triage, screening, eligibility (full text), extraction, annotation, adjudicator,
                           verifier, debate, human, curator
   graph/                  state.py, pipeline.py (LangGraph), runner.py
   eval/metrics.py         P/R/F1, Cohen & Fleiss kappa, WSS, WSS@95, cost
   eval/score.py           score a predictions file against the gold standard
+  eval/flow.py            articles through each stage (PRISMA flow + flow.png)
   eval/aggregate.py       results table over repeats   eval/figures.py  figures
   eval/errors.py          error-analysis sheet         eval/weights.py  reviewer weights
   eval/cost.py            cost estimate                eval/retrieval.py search recall

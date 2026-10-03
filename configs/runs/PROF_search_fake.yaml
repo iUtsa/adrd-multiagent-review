@@ -1,0 +1,52 @@
+# PROF_search_fake: the professor's PubMed search (1,855 results, configs/search/prof_query.yaml) taken
+# through the three stages the human team used: titles -> abstracts -> full papers.
+# UNLABELLED: there is no gold standard for these articles, so the run reports COUNTS per stage
+# (how many pass, why the rest were excluded; flow.png), not accuracy.
+# Codebook: configs/codebook_aiml_draft.yaml, a DRAFT built from the query's concepts; the professor
+# must approve or replace it before any count is reported as a result.
+# Keyword stand-in models: runs without any key; the counts check the plumbing, they are NOT results.
+#   python -m adrd_review.graph.runner configs/runs/PROF_search_fake.yaml
+name: PROF_search_fake
+condition: E3
+description: "Professor's 1,855 search results - title, abstract and full-text stages (counts only, no gold)"
+codebook: configs/codebook_aiml_draft.yaml
+gold: null
+pmids_file: data/search/prof_query_pmids.txt
+corpus_dir: data/corpus_search
+part: all
+concurrency: 8
+
+roles:
+  triage:     {model: {provider: fake, model: keyword-rules}}
+  extraction: {model: {provider: fake, model: keyword-rules}}
+
+panel:
+  - id: A
+    persona: &clinical >-
+      a clinical neurologist who diagnoses dementia. You pay closest attention to whether the condition
+      studied really is dementia or a recognised stage on the way to it, and whether the participants
+      are older adults.
+    model: {provider: fake, model: keyword-rules}
+  - id: B
+    persona: &ml >-
+      a machine-learning researcher. You pay closest attention to whether the study really develops or
+      applies an AI or machine-learning method, and whether that method is used to detect, diagnose,
+      monitor or predict the condition.
+    model: {provider: fake, model: keyword-strict}
+  - id: C
+    persona: &methods >-
+      a research methodologist. You pay closest attention to whether the article is an original study
+      with human participants, and to its design and data source.
+    model: {provider: fake, model: keyword-lenient}
+
+adjudicator: {provider: fake, model: keyword-rules}
+escalate_below: 0.6
+verifier:
+  enabled: true
+  model: {provider: fake, model: keyword-rules}
+human: none          # no person in the loop for a counts run: open decisions are kept and counted
+
+title_stage: true
+eligibility: fulltext
+eligibility_max_chars: 80000
+pdf_dir: data/pdfs   # the team's PDFs, named <PMID>.pdf (data/search/pdfs_needed.csv lists the 737 missing)

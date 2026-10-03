@@ -1,0 +1,54 @@
+# PROF_search_gemini: the professor's PubMed search (1,855 results, configs/search/prof_query.yaml) taken
+# through the three stages the human team used: titles -> abstracts -> full papers.
+# UNLABELLED: there is no gold standard for these articles, so the run reports COUNTS per stage
+# (how many pass, why the rest were excluded; flow.png), not accuracy.
+# Codebook: configs/codebook_aiml_draft.yaml, a DRAFT built from the query's concepts; the professor
+# must approve or replace it before any count is reported as a result.
+# Gemini models; needs Gemini access (see docs/MODELS.md). Check first, it prints calls, time and cost:
+#   python -m adrd_review.preflight configs/runs/PROF_search_gemini.yaml
+#   python -m adrd_review.graph.runner configs/runs/PROF_search_gemini.yaml
+name: PROF_search_gemini
+condition: E3
+description: "Professor's 1,855 search results - title, abstract and full-text stages (counts only, no gold)"
+codebook: configs/codebook_aiml_draft.yaml
+gold: null
+pmids_file: data/search/prof_query_pmids.txt
+corpus_dir: data/corpus_search
+part: all
+concurrency: 4
+
+roles:
+  triage:     {model: {provider: google, model: gemini-3.5-flash-lite, max_tokens: 1024, requests_per_minute: 10}}
+  extraction: {model: {provider: google, model: gemini-3.8-flash, requests_per_minute: 10}}
+
+panel:
+  - id: A
+    persona: &clinical >-
+      a clinical neurologist who diagnoses dementia. You pay closest attention to whether the condition
+      studied really is dementia or a recognised stage on the way to it, and whether the participants
+      are older adults.
+    model: {provider: google, model: gemini-3.8-flash, requests_per_minute: 10}
+  - id: B
+    persona: &ml >-
+      a machine-learning researcher. You pay closest attention to whether the study really develops or
+      applies an AI or machine-learning method, and whether that method is used to detect, diagnose,
+      monitor or predict the condition.
+    model: {provider: google, model: gemini-3.7-flash, requests_per_minute: 10}
+  - id: C
+    persona: &methods >-
+      a research methodologist. You pay closest attention to whether the article is an original study
+      with human participants, and to its design and data source.
+    model: {provider: google, model: gemini-3.5-flash, requests_per_minute: 10}
+
+# FREE-TIER KEY? gemini-3.1-pro-preview has NO free tier: use gemini-3.8-flash instead (docs/MODELS.md).
+adjudicator: {provider: google, model: gemini-3.1-pro-preview, max_tokens: 2048, requests_per_minute: 5}
+escalate_below: 0.6
+verifier:
+  enabled: true
+  model: {provider: google, model: gemini-3.5-flash-lite, max_tokens: 1024, requests_per_minute: 10}
+human: none          # no person in the loop for a counts run: open decisions are kept and counted
+
+title_stage: true
+eligibility: fulltext
+eligibility_max_chars: 80000
+pdf_dir: data/pdfs   # the team's PDFs, named <PMID>.pdf (data/search/pdfs_needed.csv lists the 737 missing)

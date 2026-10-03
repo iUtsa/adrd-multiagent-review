@@ -61,7 +61,7 @@ def resume_run(run_dir: str | Path, answer: AnswerFn = terminal_answer) -> dict:
     if config.human != "queue":
         raise SystemExit("This run did not use `human: queue`; nothing to answer.")
     codebook = load_codebook(config.codebook)
-    gold = load_gold(config.gold, codebook)
+    gold = load_gold(config.gold, codebook) if config.gold else []
     graph, reviewers = build_graph(
         config, codebook, gold, open_checkpointer(run_dir / "checkpoints.sqlite"), meta.get("repeat", 0)
     )

@@ -13,7 +13,7 @@ from adrd_review.llm import LLM
 from adrd_review.schemas import CuratorAnswer, Usage
 
 SYSTEM = """\
-You maintain the codebook (the written rules) for a scoping review of dementia screening research.
+You maintain the codebook (the written rules) for a scoping review of {topic}.
 AI reviewers applied the codebook below to a calibration set of articles, and some of their answers
 disagreed with the human gold standard. Your job is to find where the WORDING of the rules caused
 those disagreements, and propose clearer wording or borderline examples.
@@ -47,6 +47,7 @@ def render_disagreements(items: list[dict]) -> str:
 
 def run(codebook: Codebook, disagreements: list[dict], llm: LLM) -> tuple[CuratorAnswer, Usage]:
     system = SYSTEM.format(
+        topic=codebook.topic,
         version=codebook.version, rules=render_screening_rules(codebook), dimensions=render_dimensions(codebook)
     )
     user = f"DISAGREEMENTS ({len(disagreements)})\n\n" + render_disagreements(disagreements)

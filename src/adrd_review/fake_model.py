@@ -3,6 +3,10 @@
 Lets the whole pipeline run without an API key. Its answers follow the same
 rules as the keyword baseline (scripts/score_baselines.py), so scores from a
 fake run are a plumbing check, never a result.
+
+With the placeholder codebook it uses the built-in patterns below. With any codebook
+whose rules carry `keywords:` (e.g. configs/codebook_aiml_draft.yaml) it follows those
+instead, so a new topic can be run end to end without a key.
 """
 
 from __future__ import annotations
@@ -69,10 +73,79 @@ def _sentence_with(text: str, pattern: str) -> str | None:
     return None
 
 
+def _label_pattern(label) -> str:
+    if label.keywords:
+        return label.keywords
+    return r"\b" + re.escape(label.id).replace("_", "[ _-]") + r"\b"
+
+
 def default_responders(codebook=None, style: str = "keyword-rules") -> dict:
     if style not in STYLES:
         raise ValueError(f"Unknown fake model style {style!r}; use one of {STYLES}")
     dims = list(codebook.dimensions) if codebook is not None else ["instrument", "setting"]
+    generic = codebook is not None and any(r.keywords for r in codebook.screening.inclusion)
+    topic = _generic_responders(codebook, style) if generic else _builtin_responders(dims, style)
+    return topic | _shared_responders()
+
+
+def _generic_responders(codebook, style: str) -> dict:
+    """Keyword rules taken from the codebook (`keywords:` on rules and labels).
+
+    Strictness by style: keyword-strict treats every missing inclusion keyword as not met,
+    keyword-rules only the first two (the topic rules), keyword-lenient only the first.
+    At the title stage only the first rule can be not met (a title says little).
+    """
+    inc = codebook.screening.inclusion
+    hard = {"keyword-strict": len(inc), "keyword-rules": 2, "keyword-lenient": 1}[style]
+
+    def screening(_schema, system, user):
+        text = _article_text(user)
+        m = re.search(r"^Title: (.*)$", user, re.M)
+        title = m.group(1).strip() if m else ""
+        titles_only = "TITLES ONLY" in system
+        full_paper = "FULL PAPER" in system
+        checks = []
+        for i, rule in enumerate(inc):
+            quote = _sentence_with(text, rule.keywords) if rule.keywords else None
+            if quote:
+                checks.append(InclusionCheck(rule_id=rule.id, status="met", quote=quote))
+            elif rule.keywords and not full_paper and i < (min(hard, 1) if titles_only else hard) \
+                    and not (titles_only and style == "keyword-lenient"):
+                checks.append(InclusionCheck(rule_id=rule.id, status="not_met", quote=title))
+            else:
+                checks.append(InclusionCheck(rule_id=rule.id, status="unclear"))
+        excl = []
+        for rule in codebook.screening.exclusion:
+            hit = rule.keywords and re.search(rule.keywords, title, re.I)
+            excl.append(ExclusionCheck(rule_id=rule.id, status="applies", quote=title) if hit
+                        else ExclusionCheck(rule_id=rule.id, status="unclear"))
+        return ScreeningAnswer(inclusion=checks, exclusion=excl, rationale=f"Keyword stand-in ({style}).", confidence=0.7)
+
+    def triage(_schema, _system, user):
+        text = _article_text(user)
+        has_abstract = "(no abstract available)" not in user
+        first = inc[0]
+        off_topic = has_abstract and bool(first.keywords) and not re.search(first.keywords, text, re.I)
+        missing = [r.id for r in inc if not (r.keywords and re.search(r.keywords, text, re.I))]
+        return TriageReport(clearly_ineligible=off_topic, missing=[] if off_topic else missing, note="")
+
+    def annotation(_schema, _system, user):
+        text = _article_text(user)
+        out = []
+        for name, dim in codebook.dimensions.items():
+            found = [lab for lab in dim.labels if re.search(_label_pattern(lab), text, re.I)]
+            if not dim.multi_label:
+                found = found[:1]
+            quotes = [q for q in (_sentence_with(text, _label_pattern(lab)) for lab in found) if q]
+            out.append(DimensionAnnotation(dimension=name, labels=[lab.id for lab in found],
+                                           evidence=[EvidenceSpan(quote=q) for q in quotes][:2]))
+        return AnnotationAnswer(annotations=out, confidence=0.6)
+
+    return {TriageReport: triage, ScreeningAnswer: screening, AnnotationAnswer: annotation}
+
+
+def _builtin_responders(dims: list[str], style: str) -> dict:
+    """The placeholder topic (cognitive screening tests), with built-in patterns."""
 
     def triage(_schema, _system, user):
         text = _article_text(user)
@@ -85,6 +158,19 @@ def default_responders(codebook=None, style: str = "keyword-rules") -> dict:
         )
 
     def screening(_schema, _system, user):
+        if "TITLES ONLY" in _system:
+            # Title stage: only a title naming no instrument and no dementia term is off topic.
+            m = re.search(r"^Title: (.*)$", user, re.M)
+            title = m.group(1).strip() if m else ""
+            topical = any(re.search(p, title, re.I) for p in [*INSTRUMENTS.values(), DEMENTIA, r"cognit|screen|memory"])
+            off = not topical and style != "keyword-lenient"
+            return ScreeningAnswer(
+                inclusion=[InclusionCheck(rule_id="I1", status="not_met" if off else "unclear", quote=title if off else None),
+                           *[InclusionCheck(rule_id=r, status="unclear") for r in ("I2", "I3", "I4")]],
+                exclusion=[ExclusionCheck(rule_id=r, status="unclear") for r in ("E1", "E2", "E3")],
+                rationale=f"Keyword stand-in ({style}), title only.",
+                confidence=0.7,
+            )
         # Keyword rules expressed as rule judgments. The decision is made by screening.decide():
         #   keyword-rules    I1 needs an instrument, I2 needs dementia
         #   keyword-strict   ... and I3 needs an accuracy term
@@ -120,16 +206,6 @@ def default_responders(codebook=None, style: str = "keyword-rules") -> dict:
             confidence=0.7,
         )
 
-    def extraction(_schema, _system, user):
-        text = _article_text(user)
-        return ExtractionRecord(
-            instruments=[
-                ExtractedField(value=k, quote=_sentence_with(text, p))
-                for k, p in INSTRUMENTS.items()
-                if re.search(p, text, re.I)
-            ]
-        )
-
     def annotation(_schema, _system, user):
         text = _article_text(user)
         tables = {"instrument": INSTRUMENTS, "setting": SETTINGS}
@@ -145,6 +221,22 @@ def default_responders(codebook=None, style: str = "keyword-rules") -> dict:
                 )
             )
         return AnnotationAnswer(annotations=out, confidence=0.6)
+
+    return {TriageReport: triage, ScreeningAnswer: screening, AnnotationAnswer: annotation}
+
+
+def _shared_responders() -> dict:
+    """Agents whose stand-in does not depend on the topic."""
+
+    def extraction(_schema, _system, user):
+        text = _article_text(user)
+        return ExtractionRecord(
+            instruments=[
+                ExtractedField(value=k, quote=_sentence_with(text, p))
+                for k, p in INSTRUMENTS.items()
+                if re.search(p, text, re.I)
+            ]
+        )
 
     def adjudication(_schema, _system, user):
         # Weigh each reviewer by how much evidence it cited; answer = weighted majority.
@@ -199,10 +291,7 @@ def default_responders(codebook=None, style: str = "keyword-rules") -> dict:
         )
 
     return {
-        TriageReport: triage,
-        ScreeningAnswer: screening,
         ExtractionRecord: extraction,
-        AnnotationAnswer: annotation,
         AdjudicationAnswer: adjudication,
         DebateAnswer: debate,
         VerifierAnswer: verification,

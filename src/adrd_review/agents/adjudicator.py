@@ -22,7 +22,7 @@ from adrd_review.llm import LLM
 from adrd_review.schemas import Adjudication, AdjudicationAnswer, Article, Decision, Usage, Vote
 
 SYSTEM = """\
-You are the senior adjudicator in a scoping review of dementia screening research.
+You are the senior adjudicator in a scoping review of {topic}.
 Independent reviewers disagreed on one decision for this article. Settle it.
 
 Decision to settle: {field}
@@ -42,6 +42,7 @@ How to adjudicate:
 
 def system_prompt(codebook: Codebook, field: str) -> str:
     return SYSTEM.format(
+        topic=codebook.topic,
         field=field,
         allowed=", ".join(allowed_labels(codebook, field)),
         rules=render_field(codebook, field),

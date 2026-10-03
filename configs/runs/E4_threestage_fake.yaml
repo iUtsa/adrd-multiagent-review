@@ -1,0 +1,47 @@
+# E4_threestage_fake: E4 as a THREE-STAGE review, the way the professor's team worked:
+# titles first (only the obviously off-topic are removed; every reviewer must agree), then
+# abstracts (lenient), then the full paper (strict). Extraction and annotation read the full paper.
+# The report and flow.png show how many articles pass each stage and why the rest were excluded.
+# See docs/agents/title-screening.md and docs/agents/fulltext-eligibility.md.
+# Keyword stand-in models: runs without any key; scores are NOT results.
+#   python -m adrd_review.graph.runner configs/runs/E4_threestage_fake.yaml
+name: E4_threestage_fake
+condition: E4
+description: "E4 three-stage - title screening, abstract screening, then full-text eligibility; extraction and annotation from the full paper"
+part: calibration
+concurrency: 8
+
+roles:
+  triage:     {model: {provider: fake, model: keyword-rules}}
+  extraction: {model: {provider: fake, model: keyword-rules}}
+
+panel:
+  - id: A
+    persona: &clinical >-
+      a clinical neurologist who diagnoses dementia. You pay closest attention to whether the target
+      condition, the test being evaluated and the reference-standard diagnosis are clinically sound.
+    model: {provider: fake, model: keyword-rules}
+  - id: B
+    persona: &epi >-
+      an epidemiologist. You pay closest attention to who was studied, where they were recruited,
+      and whether the sample and setting match what the review asks for.
+    model: {provider: fake, model: keyword-strict}
+  - id: C
+    persona: &methods >-
+      a research methodologist. You pay closest attention to study design, data sources, and whether
+      diagnostic accuracy can actually be assessed from the study.
+    model: {provider: fake, model: keyword-lenient}
+
+# ---- added for E4 ----
+adjudicator: {provider: fake, model: keyword-rules}
+escalate_below: 0.6
+verifier:
+  enabled: true
+  model: {provider: fake, model: keyword-rules}
+human: gold
+
+# ---- three stages ----
+title_stage: true             # stage 0: titles only
+eligibility: fulltext          # stage 2 on the full paper
+eligibility_max_chars: 80000   # whole paper for almost every article
+pdf_dir: data/pdfs             # the team's PDFs, named <PMID>.pdf

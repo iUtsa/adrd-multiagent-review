@@ -18,7 +18,7 @@ from adrd_review.llm import LLM
 from adrd_review.schemas import Article, Decision, Usage, VerificationReport, VerifierAnswer, Vote
 
 SYSTEM = """\
-You are the Verifier in a scoping review of dementia screening research.
+You are the Verifier in a scoping review of {topic}.
 For each decision below, check whether the quoted evidence really appears to say what is claimed,
 and whether it satisfies the cited rules. Do not re-review the article from scratch and do not
 change any decision: only report whether each decision is supported.
@@ -78,7 +78,7 @@ def run(
         return report, None
 
     rules = "\n\n".join(render_field(codebook, f) for f in dict.fromkeys(d.field for d in checkable))
-    result = llm.structured(VerifierAnswer, SYSTEM.format(rules=rules), user_prompt(article, checkable, votes), role="verifier")
+    result = llm.structured(VerifierAnswer, SYSTEM.format(topic=codebook.topic, rules=rules), user_prompt(article, checkable, votes), role="verifier")
     wanted = {d.field for d in checkable}
     report.checks = [c for c in result.parsed.checks if c.field in wanted]
     report.model = llm.config.label

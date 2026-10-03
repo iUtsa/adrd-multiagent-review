@@ -23,7 +23,7 @@ from adrd_review.llm import LLM
 from adrd_review.schemas import Article, EvidenceSpan, ScreeningAnswer, Usage, Vote
 
 SYSTEM = """\
-You are a reviewer screening titles and abstracts for a scoping review of dementia screening research.
+You are a reviewer screening titles and abstracts for a scoping review of {topic}.
 {persona}
 You do NOT decide include or exclude. You judge each rule separately, and the decision is then made
 from your judgments. Judge only from the article text you are given.
@@ -53,6 +53,7 @@ Return one judgment per rule, a short rationale, and your confidence from 0 to 1
 
 def system_prompt(codebook: Codebook, persona: str | None = None) -> str:
     return SYSTEM.format(
+        topic=codebook.topic,
         persona=f"Your perspective: {persona}\n" if persona else "",
         rules=render_screening_rules(codebook),
         evidence_rules=EVIDENCE_RULES,

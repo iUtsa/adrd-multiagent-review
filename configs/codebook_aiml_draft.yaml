@@ -1,0 +1,113 @@
+# DRAFT codebook for the professor's actual review topic: AI / machine learning for detecting,
+# diagnosing, monitoring or predicting ADRD in older adults (2015-2025).
+#
+# Written by the agent team, NOT by the human reviewers. Each inclusion rule restates one concept
+# group of the professor's PubMed query (configs/search/prof_query.yaml) as a criterion, so the
+# pipeline can run on her 1,855 search results before her codebook arrives. Exclusion rules and
+# annotation labels are PROPOSALS (marked below). Replace with the team's real codebook, or edit
+# and approve this one; keep IDs stable so results stay comparable. Bump `version` on every change.
+
+version: "0.1.0-draft"
+status: draft
+topic: "AI and machine learning for detecting Alzheimer's disease and related dementias (ADRD)"
+
+# `keywords:` (on rules and labels) are used ONLY by the keyword stand-in model for no-key test runs.
+# Real models never see them; they read the rule text.
+
+question: >
+  Studies that use artificial intelligence or machine learning to detect, identify, diagnose,
+  monitor or predict Alzheimer's disease and related dementias (ADRD) in older adults.
+
+sources:
+  QUERY: "Professor's PubMed search, configs/search/prof_query.yaml (2026-09-30)"
+  PROPOSED: "Proposed by the agent team; needs the professor's approval"
+
+screening:
+  decision_rule: >
+    Exclude only when the text CLEARLY shows that an inclusion rule (I1-I4) is not met or that an
+    exclusion rule applies. If the text does not give enough information to judge a rule, that
+    rule is unclear, and unclear never excludes at title or abstract stage (benefit of the doubt).
+  inclusion:
+    - id: I1
+      name: Target condition is ADRD
+      text: >
+        The study is about dementia, Alzheimer's disease, or a related dementia (vascular, Lewy
+        body, frontotemporal, mixed). Studies of mild cognitive impairment count when it is
+        studied as a stage on the way to dementia or Alzheimer's disease.
+      source: [QUERY]
+      keywords: "dementia|alzheimer|\\bADRD\\b|\\bAD\\b|lewy|frontotemporal|cognitive impairment|\\bMCI\\b"
+    - id: I2
+      name: Uses AI or machine learning
+      text: >
+        The study develops, applies or evaluates an artificial intelligence or machine learning
+        method (for example deep learning, neural networks, random forests, support vector
+        machines, gradient boosting, natural language processing, large language models).
+        Conventional statistics alone (for example only logistic regression for association)
+        does not count unless used as a predictive model alongside other ML methods.
+      source: [QUERY]
+      keywords: "machine learning|deep learning|artificial intelligence|\\bAI\\b|neural network|random forest|support vector|\\bSVM\\b|gradient boost|XGBoost|natural language processing|\\bNLP\\b|large language model|\\bLLM\\b|convolutional|transformer|classifier"
+    - id: I3
+      name: Detection, diagnosis, monitoring or prediction
+      text: >
+        The AI/ML method is used to detect, identify, screen for, diagnose, monitor, or predict
+        ADRD (including predicting conversion or progression to dementia).
+      source: [QUERY]
+      keywords: "detect|identif|screen|diagnos|monitor|predict|classif|discriminat|early sign"
+    - id: I4
+      name: Older adults
+      text: >
+        Participants are older adults (generally aged 60 or over, or described as older, elderly,
+        aged or geriatric). Studies of ADRD patient cohorts count, as ADRD cohorts are older adults
+        by nature, unless the study is limited to early-onset or young-onset dementia.
+      source: [QUERY]
+      keywords: "older|elderly|aged|geriatric|senior|\\b6[05]\\+?|over 6[05]|community-dwelling|cohort"
+  exclusion:
+    - id: E1
+      name: Not an original study
+      text: >
+        PROPOSED. Reviews, systematic reviews, meta-analyses, editorials, commentaries, letters
+        without new data, and conference abstracts without results.
+      source: [PROPOSED]
+      keywords: "systematic review|meta-analys|scoping review|literature review|narrative review|a review\\b|: review\\b|editorial|commentary"
+    - id: E2
+      name: Not human participants
+      text: "PROPOSED. Animal or cell studies, or purely simulated data with no human participants."
+      source: [PROPOSED]
+      keywords: "\\bmice\\b|\\bmouse\\b|\\brats?\\b|transgenic|in vitro|zebrafish|drosophila"
+
+annotation:
+  # PROPOSED label sets, built from the categories named in the project abstract
+  # ("screening instrument type, target population, dataset source"). Replace with the team's.
+  dimensions:
+    data_modality:
+      multi_label: true
+      question: What kind of data does the AI/ML method use? (the "screening instrument type")
+      labels:
+        - {id: neuroimaging, definition: "MRI, PET, CT or other brain imaging", keywords: "\\bMRI\\b|\\bPET\\b|\\bCT\\b|neuroimaging|imaging|brain scan"}
+        - {id: speech_language, definition: "Speech recordings, voice, conversation or written language", keywords: "speech|voice|acoustic|linguistic|language|conversation"}
+        - {id: clinical_records, definition: "Electronic health records, claims, clinical notes, routine clinical data", keywords: "electronic health record|\\bEHR\\b|\\bEMR\\b|claims|clinical notes|medical records"}
+        - {id: cognitive_tests, definition: "Scores or item responses from cognitive or neuropsychological tests", keywords: "\\bMMSE\\b|\\bMoCA\\b|neuropsycholog|cognitive test|cognitive assessment"}
+        - {id: sensors_digital, definition: "Wearables, smartphones, gait, eye-tracking, smart-home or other digital sensors", keywords: "wearable|smartphone|sensor|accelerometer|gait|eye[- ]tracking|smart home|digital"}
+        - {id: biomarkers_genetics, definition: "Blood, CSF or other fluid biomarkers, genetics or omics", keywords: "biomarker|plasma|\\bCSF\\b|amyloid|\\btau\\b|genetic|\\bAPOE\\b|omics"}
+        - {id: other_modality, definition: "Anything else; say what in the rationale"}
+    target_population:
+      multi_label: true
+      question: Who was studied?
+      labels:
+        - {id: community, definition: "Older adults from the general population or community samples", keywords: "community|population[- ]based|general population"}
+        - {id: clinical, definition: "Patients from memory clinics, hospitals, or clinical cohorts", keywords: "memory clinic|hospital|clinic|patients"}
+        - {id: mci_cohort, definition: "People with mild cognitive impairment followed or classified", keywords: "mild cognitive impairment|\\bMCI\\b"}
+        - {id: long_term_care, definition: "Nursing home or long-term care residents", keywords: "nursing home|long[- ]term care|care home"}
+        - {id: other_population, definition: "Anything else; say what in the rationale"}
+    dataset_source:
+      multi_label: true
+      question: Where did the data come from?
+      labels:
+        - {id: ADNI, definition: "Alzheimer's Disease Neuroimaging Initiative", keywords: "\\bADNI\\b|Alzheimer'?s Disease Neuroimaging Initiative"}
+        - {id: NACC, definition: "National Alzheimer's Coordinating Center", keywords: "\\bNACC\\b|National Alzheimer'?s Coordinating Center"}
+        - {id: OASIS, definition: "Open Access Series of Imaging Studies", keywords: "\\bOASIS\\b"}
+        - {id: UK_Biobank, definition: "UK Biobank", keywords: "UK Biobank"}
+        - {id: DementiaBank, definition: "DementiaBank / Pitt corpus / ADReSS challenge data", keywords: "DementiaBank|ADReSS|Pitt corpus"}
+        - {id: health_system_records, definition: "Records of a hospital, health system or insurer", keywords: "electronic health record|\\bEHR\\b|claims data|Medicare|health system"}
+        - {id: own_collection, definition: "Data collected by the study team", keywords: "we recruited|were recruited|we collected"}
+        - {id: other_dataset, definition: "Another named dataset; say which in the rationale"}

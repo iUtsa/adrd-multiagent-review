@@ -24,6 +24,29 @@ Everything is built. This is the order to run it once model access is set up, an
 
 Put the team's PDFs in `data/pdfs/<PMID>.pdf` first. Papers without full text are flagged, not excluded, and listed in `pdfs_needed.csv`. See [agents/fulltext-eligibility.md](agents/fulltext-eligibility.md).
 
+## Three-stage configs (titles → abstracts → full text) and stage counts
+
+The professor's team screened titles first, then abstracts, then full papers. These configs do the same (`title_stage: true`); see [agents/title-screening.md](agents/title-screening.md).
+
+| Config | What it is |
+|---|---|
+| **`E4_threestage_gemini.yaml`** / `E4_threestage_fake.yaml` | E4 with title, abstract and full-text stages, on the gold standard (scored) |
+| **`PROF_search_gemini.yaml`** / `PROF_search_fake.yaml` | The professor's 1,855 search results through all three stages, **unlabelled: counts only**, with the DRAFT AI/ML codebook |
+
+Every run prints and saves **how many articles pass each stage and why the rest were excluded** (PRISMA flow: `report.json` → `flow`, and `flow.png`). Example (stand-in model, plumbing only):
+
+```
+ARTICLES THROUGH EACH STAGE (PRISMA flow)
+  Records identified            1855
+  1. Title screening           screened  1855   excluded    41   -> 1814 passed
+  2. Abstract screening        screened  1814   excluded   302   -> 1512 passed
+  3. Full text                 sought    1512   retrieved 909 {'pmc': 907, 'oa_pdf': 2}   not retrieved 603
+                                assessed   909   excluded     0   -> 1512 passed
+  INCLUDED                      1512   (confirmed 904, waiting for a person 608)
+```
+
+Real counts for the 1,855 need Gemini: about $143 at most and ~9 hours (`python -m adrd_review.preflight configs/runs/PROF_search_gemini.yaml`); try `--limit 100` first (≈ $8).
+
 ## Before every real run: preflight
 
 ```bash
@@ -109,4 +132,5 @@ These only show that every step runs and is counted correctly; the fake model is
 | Run | Codebook | Recall | Precision | Specificity | κ | Notes |
 |---|---|---|---|---|---|---|
 | E2_groq | v0.1.0 | 0.000 (0/13) | – | 1.000 | 0.000 | Excluded everything: reviewers treated "not reported" as "not met". Led to the per-rule redesign and codebook v0.2.0 ([PROGRESS.md](PROGRESS.md)). |
-| E2_groq | v0.2.0 | 0.900 (9/10) | 0.818 | 0.895 | 0.776 | **Partial: 29 of 40 articles** (11 waiting on Groq's daily token limit). Keyword baseline on the same 29: recall 0.800, precision 0.471, κ 0.280. Finish with the same command the next day. |
+| E2_groq | v0.2.0 | 0.900 (9/10) | 0.818 | 0.895 | 0.776 | Partial: 29 of 40 articles (Groq's daily token limit). |
+| **E2_groq** | **v0.2.0** | **0.769 (10/13)** | **0.769** | **0.889** | **0.658** | **All 40, 0 failures.** Keyword baseline: recall 0.769, precision 0.435, specificity 0.519, κ 0.240. The 3 misses were all split votes flagged for a human, and Cochrane excluded all 3 after full text; the panel kept 6 of 6 of Cochrane's final includes. |

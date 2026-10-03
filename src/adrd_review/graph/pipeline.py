@@ -8,7 +8,11 @@ PipelineOptions switch steps on:
     D   E3 + debate rounds before the adjudicator
     two-stage (eligibility=True): after abstract screening, the full paper is fetched and
         judged strictly before extraction and annotation, as human reviewers do
+    three-stage (title_stage=True, with eligibility=True): titles are screened first, as the
+        professor's team did: titles -> abstracts -> full papers
 
+    START -> [title_stage only] [title_reviewer x N] -> title_consensus
+              --every reviewer excludes--> finalize
     START -> triage -> fulltext (optional excerpt) -> [screen_reviewer x N] -> screen_consensus
        -> (split, rounds left) screen_debate -> screen_consensus ...
        -> (split, adjudicator) screen_adjudicate
@@ -37,11 +41,28 @@ from dataclasses import dataclass, field
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
-from adrd_review.agents import adjudicator, annotation, debate, eligibility, extraction, screening, triage, verifier
+from adrd_review.agents import (
+    adjudicator,
+    annotation,
+    debate,
+    eligibility,
+    extraction,
+    screening,
+    title_screening,
+    triage,
+    verifier,
+)
 from adrd_review.agents.common import allowed_labels
 from adrd_review.agents.human import HumanReviewer
 from adrd_review.codebook import Codebook
-from adrd_review.consensus import combine_eligibility, combine_labels, combine_screening, is_split, latest_votes
+from adrd_review.consensus import (
+    combine_eligibility,
+    combine_labels,
+    combine_screening,
+    combine_title,
+    is_split,
+    latest_votes,
+)
 from adrd_review.graph.state import ArticleState
 from adrd_review.llm import LLM
 from adrd_review.schemas import Decision, Escalation
@@ -65,6 +86,8 @@ class PipelineOptions:
     debate_rounds: int = 0  # variant D: rounds of debate on split fields before adjudication
     human: HumanReviewer | None = None  # E4: answers escalated decisions
     fields_debated: list[str] = field(default_factory=list)  # empty = all fields
+    # Stage 0: title-only screening before the abstract (removes only the obviously off-topic)
+    title_stage: bool = False
     # Stage 1 extra: show a PubMed Central excerpt at abstract screening
     fulltext: str = "never"  # never | when_needed (triage says abstract is not enough) | always
     fulltext_max_chars: int = 12000
@@ -108,6 +131,31 @@ def build_pipeline(
             new.append(nv)
             usages.append(usage)
         return new, usages
+
+    # ---- stage 0: title screening ----------------------------------------------------
+
+    def route_start(state: ArticleState):
+        if not opt.title_stage:
+            return "triage"
+        return [Send("title_reviewer", {"article": state["article"], "reviewer_id": r.id}) for r in reviewers]
+
+    def title_reviewer(payload: dict) -> dict:
+        r = by_id[payload["reviewer_id"]]
+        vote, usage = title_screening.run(payload["article"], codebook, r.llm, reviewer_id=r.id, persona=r.persona)
+        return {"title_votes": [vote], "usage": [usage]}
+
+    def title_consensus(state: ArticleState) -> dict:
+        d = combine_title(latest_votes(state["title_votes"]), weights)
+        out: dict = {"title_decision": d}
+        if d.labels == ["exclude"]:
+            # Excluded at the title: the abstract is never screened. Recorded as a screening exclusion
+            # so scoring and the rest of the pipeline treat it like any other stage-1 exclusion.
+            out["screening_decision"] = Decision(field="screening", labels=["exclude"], method="title_excluded",
+                                                 confidence=d.confidence, include_score=d.include_score)
+        return out
+
+    def route_title(state: ArticleState) -> str:
+        return "finalize" if state["title_decision"].labels == ["exclude"] else "triage"
 
     # ---- triage and stage 1: title/abstract screening ------------------------------
 
@@ -292,7 +340,7 @@ def build_pipeline(
     # ---- extraction and annotation ------------------------------------------------
 
     def extract_node(state: ArticleState) -> dict:
-        record, usage = extraction.run(state["article"], extraction_llm)
+        record, usage = extraction.run(state["article"], extraction_llm, codebook.topic)
         return {"extraction": record, "usage": [usage]}
 
     def fan_out_annotation(state: ArticleState) -> list[Send]:
@@ -351,8 +399,8 @@ def build_pipeline(
     # ---- verification and final human review ---------------------------------------
 
     def finalize(state: ArticleState) -> dict:
-        if not opt.verify:
-            return {}
+        if not opt.verify or state["screening_decision"].method == "title_excluded":
+            return {}  # title exclusions need every reviewer to agree; nothing for the verifier to check
         decisions = [state["screening_decision"]]
         elig = state.get("eligibility_decision")
         if elig is not None and elig.labels != ["unclear"]:
@@ -389,6 +437,8 @@ def build_pipeline(
 
     g = StateGraph(ArticleState)
     for name, fn in [
+        ("title_reviewer", title_reviewer),
+        ("title_consensus", title_consensus),
         ("triage", triage_node),
         ("fulltext", fulltext_node),
         ("screen_reviewer", screen_reviewer),
@@ -415,7 +465,9 @@ def build_pipeline(
         g.add_node(name, fn)
 
     next_after_screen = ["get_fulltext", "extract", "finalize"]
-    g.add_edge(START, "triage")
+    g.add_conditional_edges(START, route_start, ["title_reviewer", "triage"])
+    g.add_edge("title_reviewer", "title_consensus")
+    g.add_conditional_edges("title_consensus", route_title, ["triage", "finalize"])
     g.add_edge("triage", "fulltext")
     g.add_conditional_edges("fulltext", fan_out_screening, ["screen_reviewer"])
     g.add_edge("screen_reviewer", "screen_consensus")
