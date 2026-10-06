@@ -27,6 +27,23 @@ The 1,855 PMIDs are saved in `data/search/prof_query_pmids.txt` (git-ignored) wi
 python -c "import yaml; from adrd_review.tools.pubmed import search; ids, n = search(yaml.safe_load(open('configs/search/prof_query.yaml'))['corrected']); print(n)"
 ```
 
+## The dementia keyword (checked 2026-10-06)
+
+The professor confirmed that "dementia" is a keyword of the search. It already is: the first concept group is
+`"dementia"[tiab] OR "Dementia"[MeSH Terms] OR "Alzheimer's"[tiab] OR "Alzheimer Disease"[MeSH Terms]`, joined to the
+other groups with AND (the corrected query). The MeSH term "Dementia" also covers its sub-headings (Alzheimer, vascular,
+Lewy body, frontotemporal). The screening rule I1 of the draft codebook covers dementia too. Variants of that group, run on PubMed:
+
+| Dementia group | Count | New vs the 1,855 | Of the 1,855 lost |
+|---|---|---|---|
+| **As used** (dementia + Alzheimer terms) | **1,855** | – | – |
+| Group removed | 23,950 | – | – |
+| Dementia only (no Alzheimer terms) | 1,726 | 0 | 129 |
+| + "dementias", "Alzheimer", "ADRD" | 1,864 | 9 | 0 |
+| + also mild cognitive impairment | 2,045 | 190 | 0 |
+
+Nothing changes unless the professor wants the group broadened (the last two rows).
+
 ## What it tells us
 
 - The review topic is **AI / machine learning for detecting, diagnosing, monitoring or predicting ADRD in older adults**. The placeholder gold standard and codebook (Cochrane reviews of cognitive tests such as MMSE and MoCA) are a different topic. They still test the screening mechanics; the agents' prompts follow the real codebook automatically once it arrives.
