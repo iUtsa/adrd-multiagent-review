@@ -160,12 +160,12 @@ def test_human_gold_refused_without_gold():
 
 
 def test_aiml_codebook_has_the_professors_criteria_and_names_the_real_topic():
-    assert AIML.version == "0.2.0" and "machine learning" in AIML.topic
+    assert AIML.version == "0.3.0" and "machine learning" in AIML.topic
     assert [r.id for r in AIML.screening.inclusion] == ["I1", "I2", "I3", "I4"]
     assert all(r.keywords for r in AIML.screening.inclusion)
     rules = {r.id: " ".join(r.text.split()) for r in AIML.rules}
     assert "MCI alone" in rules["I1"] or "MCI) counts ONLY together" in rules["I1"]  # professor, 2026-10-07
-    assert "Logistic regression counts" in rules["I2"] and "65 or over" in rules["I4"]
+    assert "Logistic regression counts" in rules["I2"] and "60 or over" in rules["I4"]
     assert "Full papers in conference proceedings are NOT excluded" in rules["E2"]
     assert [r.id for r in AIML.rules if "PROPOSED" in r.source] == ["I4", "E3", "E4"]
     from adrd_review.agents import screening
@@ -213,3 +213,24 @@ def test_annotate_off_stops_after_screening():
     opts1 = PipelineOptions(annotate=False)
     s1 = build_pipeline(CODEBOOK, llm, llm, [Reviewer("A", llm, llm)], opts1).invoke({"article": ON_TOPIC})
     assert s1["screening_decision"].labels == ["include"] and "extraction" not in s1
+
+
+def test_missing_fulltext_not_retrieved_is_left_out_and_counted():
+    llm = FakeLLM(ModelConfig(provider="fake", model="keyword-rules"), default_responders(CODEBOOK, "keyword-rules"))
+    none = FullTextResult(None, None, "subscription", link=None)
+
+    def run(mode, source):
+        opts = PipelineOptions(eligibility=True, annotate=False, missing_fulltext=mode, verify=True, fulltext_source=source)
+        return build_pipeline(CODEBOOK, llm, llm, [Reviewer("A", llm, llm)], opts).invoke({"article": ON_TOPIC})
+
+    dropped = run("not_retrieved", lambda a: none)
+    assert (dropped["eligibility_decision"].labels, dropped["eligibility_decision"].method) == (["exclude"], "not_retrieved")
+    assert not dropped.get("escalations")  # nobody is asked about it
+    kept = run("human", lambda a: none)
+    assert kept["eligibility_decision"].method == "no_fulltext"  # default: kept for a person
+    found = run("not_retrieved", lambda a: FullTextResult(PAPER, "pmc", "PMC1"))
+    f = flow_counts([dropped, kept, found])["fulltext"]
+    assert (f["sought"], f["retrieved"], f["not_retrieved"], f["not_retrieved_left_out"]) == (3, 1, 2, 1)
+    assert f["excluded"] == 0 and f["passed"] == 2 and f["still_open"]["no_fulltext"] == 1
+    assert flow_counts([dropped, found])["included"]["total"] == 1
+    assert "(left out)" in format_flow(flow_counts([dropped, found]))

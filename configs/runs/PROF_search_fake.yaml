@@ -3,7 +3,7 @@
 # UNLABELLED: there is no gold standard for these articles, so the run reports COUNTS per stage
 # (how many pass, why the rest were excluded; flow.png), not accuracy.
 # This is what the professor asked for (2026-10-07): how many papers pass title, abstract and
-# full-text screening. Codebook: configs/codebook_aiml.yaml v0.2.0 (her criteria; items marked
+# full-text screening. Codebook: configs/codebook_aiml.yaml v0.3.0 (her criteria; items marked
 # PROPOSED still need her confirmation). Extraction and annotation are switched off (annotate: false):
 # they are not needed for the counts and would be most of the full-text cost.
 # Keyword stand-in models: runs without any key; the counts check the plumbing, they are NOT results.
@@ -52,4 +52,5 @@ title_stage: true
 eligibility: fulltext
 eligibility_max_chars: 80000
 annotate: false      # counts only: stop after full-text screening
+missing_fulltext: not_retrieved   # no full text -> reported as not retrieved, left out (professor: we do not need every paper)
 pdf_dir: data/pdfs   # the team's PDFs, named <PMID>.pdf (data/search/pdfs_needed.csv lists the 737 missing)

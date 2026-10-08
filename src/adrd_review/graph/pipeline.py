@@ -98,6 +98,9 @@ class PipelineOptions:
     eligibility: bool = False
     eligibility_max_chars: int = 80000  # whole paper for almost every article (longest sampled: 67,100)
     fulltext_source: Callable | None = None  # article -> FullTextResult (default: tools.fulltext.get_fulltext)
+    # A paper whose full text cannot be obtained: "human" keeps it, flagged for a person to decide;
+    # "not_retrieved" leaves it out, reported as not retrieved (PRISMA), for runs that only need counts.
+    missing_fulltext: str = "human"
 
 
 def build_pipeline(
@@ -288,6 +291,10 @@ def build_pipeline(
 
     def elig_checks(state: ArticleState) -> dict:
         info = state.get("fulltext_info") or {}
+        if not state["article"].fulltext and opt.missing_fulltext == "not_retrieved":
+            # Counts-only runs: the paper cannot be assessed, so it is reported as "not retrieved" and left out.
+            return {"eligibility_decision": Decision(field="eligibility", labels=["exclude"], method="not_retrieved",
+                                                     include_score=0.5)}
         if not state["article"].fulltext:
             # No full text anywhere: never an exclusion. Flag it and let a human decide.
             return {
@@ -413,7 +420,7 @@ def build_pipeline(
         if finally_included(state):
             decisions += list((state.get("annotation_decisions") or {}).values())
         # A person's decision is final: the verifier checks agents' decisions only.
-        decisions = [d for d in decisions if d.method != "human"]
+        decisions = [d for d in decisions if d.method not in ("human", "not_retrieved")]
         if not decisions:
             return {}
         votes = state.get("screening_votes", []) + state.get("eligibility_votes", []) + state.get("annotation_votes", [])

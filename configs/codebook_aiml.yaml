@@ -5,11 +5,12 @@
 # PubMed query (configs/search/prof_query.yaml). v0.2.0 applies the professor's answers (email,
 # 2026-10-07): MCI alone does not count but MCI together with Alzheimer's/dementia does; logistic
 # regression alone counts as ML; reviews do not count; conference proceedings count but
-# abstract-only publications do not; older adults means 65 or over.
+# abstract-only publications do not; older adults means 65 or over. v0.3.0: older adults is 60 or over
+# (the professor's age categories, 2026-10-08: Older Adult 60+, Adult/Middle Age 40-59).
 # Items still marked PROPOSED (source PROPOSED) are the agent team's and need her confirmation.
 # Keep IDs stable so results stay comparable. Bump `version` on every change.
 
-version: "0.2.0"
+version: "0.3.0"
 status: confirmed-in-part
 topic: "AI and machine learning for detecting Alzheimer's disease and related dementias (ADRD)"
 
@@ -18,11 +19,11 @@ topic: "AI and machine learning for detecting Alzheimer's disease and related de
 
 question: >
   Studies that use artificial intelligence or machine learning to detect, identify, diagnose,
-  monitor or predict Alzheimer's disease and related dementias (ADRD) in adults aged 65 or over.
+  monitor or predict Alzheimer's disease and related dementias (ADRD) in older adults (aged 60 or over).
 
 sources:
   QUERY: "Professor's PubMed search, configs/search/prof_query.yaml (2026-09-30)"
-  PROF: "Professor's answers on the criteria (email, 2026-10-07)"
+  PROF: "Professor's answers on the criteria (email 2026-10-07; age categories 2026-10-08)"
   PROPOSED: "Proposed by the agent team; needs the professor's confirmation"
 
 screening:
@@ -63,18 +64,19 @@ screening:
       source: [QUERY]
       keywords: "detect|identif|screen|diagnos|monitor|predict|classif|discriminat|early sign"
     - id: I4
-      name: Older adults (65 or over)
+      name: Older adults (60 or over)
       text: >
-        Participants are older adults aged 65 or over. Met when the study requires participants to
-        be 65 or over, when all participants are 65 or over, or when the reported mean or median
-        age is 65 or over. Not met when the participants are clearly younger (for example a mean
-        age under 65, or a study limited to early-onset or young-onset dementia). If the age is not
+        Participants are older adults, aged 60 or over (age groups used by this review: young adult
+        20-39, adult or middle age 40-59, older adult 60+). Met when the study requires participants
+        to be 60 or over, when all participants are 60 or over, or when the reported mean or median
+        age is 60 or over. Not met when the participants are clearly younger (for example a mean age
+        under 60, or a study limited to early-onset or young-onset dementia). If the age is not
         reported, the rule is unclear.
-      source: [PROF, PROPOSED]  # 65+ is the professor's; counting a mean/median of 65+ is PROPOSED
+      source: [PROF, PROPOSED]  # 60+ is the professor's; counting a mean/median of 60+ is PROPOSED
       examples:
-        - "ADNI participants aged 55-90, mean age 73: met (mean age 65 or over)."
-        - "Community sample aged 50 and over, mean age 58: not met."
-      keywords: "older|elderly|aged|geriatric|senior|\\b6[5-9]\\b|\\b[7-9]\\d\\b|over 65|community-dwelling"
+        - "ADNI participants aged 55-90, mean age 73: met (mean age 60 or over)."
+        - "Middle-aged sample aged 40-59: not met."
+      keywords: "older|elderly|aged|geriatric|senior|\\b[6-9]\\d\\b|over 60|over 65|community-dwelling"
   exclusion:
     - id: E1
       name: Review

@@ -110,6 +110,9 @@ class RunConfig(BaseModel):
     annotate: bool = True
     eligibility_max_chars: int = 80000
     pdf_dir: str = "data/pdfs"
+    # A paper with no obtainable full text: human = kept and flagged for a person (default; nothing is lost);
+    # not_retrieved = left out and reported as "not retrieved" (counts-only runs; the professor's choice)
+    missing_fulltext: Literal["human", "not_retrieved"] = "human"
     # Reviewer weights computed on a calibration run (python -m adrd_review.eval.weights);
     # overrides the `weight:` of each panel reviewer it lists.
     weights_file: str | None = None
@@ -179,6 +182,7 @@ def build_graph(config: RunConfig, codebook: Codebook, gold: list[GoldRecord], c
         eligibility=config.eligibility == "fulltext",
         eligibility_max_chars=config.eligibility_max_chars,
         fulltext_source=_fulltext_source(config),
+        missing_fulltext=config.missing_fulltext,
     )
     graph = build_pipeline(
         codebook,
@@ -284,6 +288,8 @@ def _progress(state: dict) -> str:
     elif state.get("eligibility_decision") is not None:
         e = state["eligibility_decision"]
         where = {"include": "INCLUDED", "exclude": "excluded at full text", "unclear": "kept, a person decides"}[e.labels[0]]
+        if e.method == "not_retrieved":
+            where = "full text not retrieved (left out)"
         where += f" [{e.method}]"
     else:
         where = f"passed abstract [{d.method}]"

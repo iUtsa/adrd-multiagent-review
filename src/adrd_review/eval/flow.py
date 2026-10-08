@@ -21,6 +21,7 @@ from adrd_review.codebook import Codebook
 
 HUMAN = "human"
 FLAGGED = ("no_fulltext", "unclear")
+NOT_RETRIEVED = "not_retrieved"  # decision method for a paper whose full text could not be obtained and was left out
 
 
 def _reason(state: dict, field: str, codebook: Codebook | None) -> str:
@@ -98,8 +99,9 @@ def flow_counts(states: list[dict], failures: int = 0, codebook: Codebook | None
     reached = [s for s in pool if (s.get("fulltext_info") or {}).get("stage") == 2]
     if reached:
         retrieved = [s for s in reached if s["fulltext_info"].get("used")]
-        f_out = [s for s in reached if (s.get("eligibility_decision") is not None
-                                        and s["eligibility_decision"].labels == ["exclude"])]
+        # Not retrieved and left out (missing_fulltext: not_retrieved): PRISMA "reports not retrieved".
+        dropped = [s for s in reached if s["eligibility_decision"].method == NOT_RETRIEVED]
+        f_out = [s for s in reached if s["eligibility_decision"].labels == ["exclude"] and s not in dropped]
         open_ = [s for s in reached if s not in f_out and s["eligibility_decision"].labels == ["unclear"]]
         out["fulltext"] = {
             "sought": len(reached),
@@ -107,8 +109,9 @@ def flow_counts(states: list[dict], failures: int = 0, codebook: Codebook | None
             "by_source": dict(Counter(s["fulltext_info"].get("source") for s in retrieved)),
             "not_retrieved": len(reached) - len(retrieved),
             "assessed_by_agents": sum(bool(s.get("eligibility_votes")) for s in reached),
+            "not_retrieved_left_out": len(dropped),
             "excluded": len(f_out),
-            "passed": len(reached) - len(f_out),
+            "passed": len(reached) - len(f_out) - len(dropped),
             "decided_by_human": sum(s["eligibility_decision"].method == HUMAN for s in reached),
             "still_open": {
                 "no_fulltext": sum(s["eligibility_decision"].method == "no_fulltext" for s in open_),
@@ -117,7 +120,7 @@ def flow_counts(states: list[dict], failures: int = 0, codebook: Codebook | None
             "reasons": _named(Counter(_reason(s, "eligibility", codebook) for s in f_out), codebook),
             **lost(f_out),
         }
-        pool = [s for s in pool if s not in f_out]
+        pool = [s for s in pool if s not in f_out and s not in dropped]
 
     final_open = sum(
         s.get("eligibility_decision") is not None and s["eligibility_decision"].labels == ["unclear"] for s in pool
@@ -163,7 +166,8 @@ def format_flow(flow: dict) -> str:
     lines += reasons(a)
     if "fulltext" in flow:
         f = flow["fulltext"]
-        lines.append(f"  {n + 1}. Full text                 sought   {f['sought']:5}   retrieved {f['retrieved']} {f['by_source']}   not retrieved {f['not_retrieved']}")
+        left_out = " (left out)" if f.get("not_retrieved_left_out") else ""
+        lines.append(f"  {n + 1}. Full text                 sought   {f['sought']:5}   retrieved {f['retrieved']} {f['by_source']}   not retrieved {f['not_retrieved']}{left_out}")
         lines.append(f"                                assessed {f['assessed_by_agents']:5}   excluded {f['excluded']:5}   -> {f['passed']} passed{lost(f, final_only=True)}")
         lines += reasons(f)
         so = f["still_open"]
@@ -192,7 +196,9 @@ def flow_figure(flow: dict, path: str | Path, title: str = "") -> Path:
     stages.append((f"Abstracts screened\n{a['screened']}", a["passed"], ("Excluded at abstract", a["excluded"], a["reasons"])))
     if "fulltext" in flow:
         f = flow["fulltext"]
-        label = f"Full texts sought {f['sought']}\nretrieved {f['retrieved']}, not retrieved {f['not_retrieved']}\nassessed by agents {f['assessed_by_agents']}"
+        left_out = " (left out)" if f.get("not_retrieved_left_out") else ""
+        label = (f"Full texts sought {f['sought']}\nretrieved {f['retrieved']}, not retrieved {f['not_retrieved']}{left_out}"
+                 f"\nassessed by agents {f['assessed_by_agents']}")
         stages.append((label, f["passed"], ("Excluded at full text", f["excluded"], f["reasons"])))
 
     fig, ax = plt.subplots(figsize=(9, 1.9 * (len(stages) + 1)))

@@ -154,10 +154,13 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
     have = [a for a in arts.values() if a is not None]
 
     # 5. full-text sources
+    ft_share = 1.0  # share of articles with a full-text source (the rest skip stage 2 when left out)
     if two_stage:
         pdfs = sum((Path(cfg.pdf_dir) / f"{a.pmid}.pdf").exists() for a in have)
         pmc = sum(bool(a.pmcid) and not (Path(cfg.pdf_dir) / f"{a.pmid}.pdf").exists() for a in have)
         none = len(have) - pdfs - pmc
+        if cfg.missing_fulltext == "not_retrieved" and have:
+            ft_share = (pdfs + pmc) / len(have)
         level = "PASS" if none == 0 else "WARN"
         rep.add(level, f"full text: {pdfs} team PDF(s) in {cfg.pdf_dir}, {pmc} via PubMed Central, {none} with neither "
                        f"(those reaching stage 2 are flagged for a human and listed in pdfs_needed.csv)")
@@ -189,8 +192,8 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
         rep.add("WARN", f"unlabelled corpus: the estimate assumes {ASSUMED_TITLE_PASS:.0%} pass titles and "
                         f"{ASSUMED_ABSTRACT_PASS:.0%} of those pass abstracts (an upper bound; real counts come from the run)")
     screened = n * (ASSUMED_TITLE_PASS if cfg.title_stage else 1)  # articles reaching abstract screening
-    per_role = {"title": n, "triage": screened, "screening": screened, "eligibility": n * kept, "extraction": n * kept,
-                "annotation": n * kept, "adjudicator": 0.4 * screened, "verifier": screened}
+    per_role = {"title": n, "triage": screened, "screening": screened, "eligibility": n * kept * ft_share,
+                "extraction": n * kept * ft_share, "annotation": n * kept * ft_share, "adjudicator": 0.4 * screened, "verifier": screened}
     calls_by: dict[str, float] = defaultdict(float)
     tokens_by: dict[str, float] = defaultdict(float)
     cfg_by: dict[str, ModelConfig] = {}
