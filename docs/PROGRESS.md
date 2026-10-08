@@ -4,6 +4,18 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-10-08 (later) — Older adults 60+; papers without full text left out
+
+The professor sent the review's age groups (young adult 20–39, adult/middle age 40–59, **older adult 60+**). She also said papers without obtainable full text need not all be covered ("whatever we can pass through"). Gemini access is on the way.
+
+- **Codebook v0.3.0**: I4 means age 60+. Still PROPOSED: a mean or median age of 60+ counts (so ADNI studies, ages 55–90, mean ~73, count).
+- **`missing_fulltext: not_retrieved`**: a paper whose full text cannot be obtained is reported as **not retrieved** (PRISMA "reports not retrieved") and left out, with no model call and no person. The default (`human`) still keeps such papers for a person, so gold-standard runs are unchanged. The verifier skips these decisions.
+- Set in `PROF_search_*`. The stand-in run on all 1,855 papers shows the flow with "not retrieved 602 (left out)".
+- **Gemini estimate for all 1,855: ~$96 at most, ~6.5 hours; 100-paper pilot ~$5.** Preflight no longer counts full-text calls for papers without a full-text source.
+- **Tests: 140 pass.**
+
+---
+
 ## 2026-10-08 — The professor's criteria in the codebook; counts-only runs
 
 **Professor's answers (email, 2026-10-07):**

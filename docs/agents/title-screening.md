@@ -93,9 +93,9 @@ Every run prints **ARTICLES THROUGH EACH STAGE (PRISMA flow)** and saves it in `
 
 - **No title-stage gold labels** in the placeholder, so stage 0 is judged by the includes it loses, not by its own precision.
 - **Real counts need real models.** The fake model's counts check the plumbing only; the lenient stand-in keeps every title by design.
-- **The topic codebook is confirmed in part.** Counts for the professor's search use `configs/codebook_aiml.yaml` v0.2.0, which has her criteria (2026-10-07). Three items are still PROPOSED: counting a mean age of 65+ as meeting I4, E3 (editorials, protocols, retracted papers) and E4 (animal studies).
+- **The topic codebook is confirmed in part.** Counts for the professor's search use `configs/codebook_aiml.yaml` v0.3.0, which has her criteria (2026-10-07; older adults 60+, 2026-10-08). Three items are still PROPOSED: counting a mean age of 60+ as meeting I4, E3 (editorials, protocols, retracted papers) and E4 (animal studies).
 
 ## 13. Change log
 
 - 2026-10-03: built, with stage counts (`eval/flow.py`), unlabelled-corpus runs (`gold: null` + `pmids_file`), and the draft codebook for the AI/ML topic.
-- 2026-10-08: codebook v0.2.0 with the professor's criteria; `annotate: false` for counts-only runs.
+- 2026-10-08: codebook v0.2.0 with the professor's criteria; `annotate: false` for counts-only runs. Later: v0.3.0 (older adults 60+).

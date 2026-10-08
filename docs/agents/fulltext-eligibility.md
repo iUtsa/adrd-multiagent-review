@@ -31,7 +31,7 @@ Tried in this order; the source is recorded per article in `fulltext_info`:
 | 1 | **The team's PDF**: `data/pdfs/<PMID>.pdf` | What the human reviewers read. Text is extracted with `pypdf` and must pass a quality check (enough text, mostly words, words not run together); the reference list is dropped. A failed PDF falls through to the next source. |
 | 2 | **PubMed Central** | Structured XML, free. About 61% of the professor's 1,855 search results. |
 | 3 | **Open-access PDF** | Downloaded only when Europe PMC marks the link "Open access". In practice most such links are publisher pages or bot-protected, so this rarely succeeds. |
-| 4 | **None** | The article is **not excluded**. It is flagged (`no_fulltext`), sent to a human, and listed in the run's `pdfs_needed.csv` with a link and the exact file name to save the PDF as. Re-running after adding PDFs picks them up; finished calls come from the cache. |
+| 4 | **None** | With `missing_fulltext: not_retrieved` (counts-only runs, the professor's choice: "we do not need every paper") the article is reported as **not retrieved** (PRISMA) and left out, without a model call or a person. Otherwise (default, `human`) the article is **not excluded**: It is flagged (`no_fulltext`), sent to a human, and listed in the run's `pdfs_needed.csv` with a link and the exact file name to save the PDF as. Re-running after adding PDFs picks them up; finished calls come from the cache. |
 
 About a third of the professor's search results are paywalled (measured; see [../FULLTEXT_PLAN.md](../FULLTEXT_PLAN.md)), so the team's PDFs matter.
 
@@ -104,3 +104,4 @@ Fake two-stage run, 40 calibration articles (placeholder; old papers): 23–24 r
 ## 13. Change log
 
 - 2026-10-01: built.
+- 2026-10-08: `missing_fulltext: not_retrieved` option for counts-only runs.
