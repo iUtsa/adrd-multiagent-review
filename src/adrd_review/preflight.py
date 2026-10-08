@@ -74,6 +74,8 @@ def models_by_role(cfg: RunConfig) -> dict[str, list[ModelConfig]]:
         "screening": [r.model for r in panel],
         "annotation": [r.annotation_model or r.model for r in panel],
     }
+    if not cfg.annotate:
+        del out["extraction"], out["annotation"]
     if cfg.eligibility == "fulltext":
         out["eligibility"] = [r.model for r in panel]
     if cfg.adjudicator:
@@ -103,6 +105,9 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
             rep.add("PASS", f"config '{cfg.name}' ({cfg.condition}), codebook {codebook.version}, {len(pmids)} {what}")
         if codebook.status == "draft":
             rep.add("WARN", f"codebook {codebook.version} is a DRAFT: results are not reportable until the professor approves it")
+        proposed = [r.id for r in codebook.rules if "PROPOSED" in r.source]
+        if proposed and codebook.status != "draft":
+            rep.add("WARN", f"codebook {codebook.version}: rules {proposed} include PROPOSED parts not yet confirmed by the professor")
     except Exception as e:
         rep.add("FAIL", f"could not load config/codebook/gold/split: {type(e).__name__}: {e}")
         return rep

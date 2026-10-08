@@ -88,6 +88,8 @@ class PipelineOptions:
     fields_debated: list[str] = field(default_factory=list)  # empty = all fields
     # Stage 0: title-only screening before the abstract (removes only the obviously off-topic)
     title_stage: bool = False
+    # Extraction + annotation of included articles (off = screening only: a counts-only run)
+    annotate: bool = True
     # Stage 1 extra: show a PubMed Central excerpt at abstract screening
     fulltext: str = "never"  # never | when_needed (triage says abstract is not enough) | always
     fulltext_max_chars: int = 12000
@@ -231,7 +233,10 @@ def build_pipeline(
     def after_screening(state: ArticleState) -> str:
         if state["screening_decision"].labels != ["include"]:
             return "finalize"
-        return "get_fulltext" if opt.eligibility else "extract"
+        return "get_fulltext" if opt.eligibility else after_inclusion()
+
+    def after_inclusion() -> str:
+        return "extract" if opt.annotate else "finalize"
 
     # ---- stage 2: full-text eligibility ----------------------------------------------
 
@@ -307,7 +312,7 @@ def build_pipeline(
 
     def after_eligibility(state: ArticleState) -> str:
         # "unclear" with nobody to ask stays in (flagged): a study is never dropped for lack of an answer.
-        return "finalize" if state["eligibility_decision"].labels == ["exclude"] else "extract"
+        return "finalize" if state["eligibility_decision"].labels == ["exclude"] else after_inclusion()
 
     # ---- human review (used after screening, after eligibility, and at the end) --------
 

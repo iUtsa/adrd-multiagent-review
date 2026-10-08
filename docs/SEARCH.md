@@ -32,7 +32,7 @@ python -c "import yaml; from adrd_review.tools.pubmed import search; ids, n = se
 The professor confirmed that "dementia" is a keyword of the search. It already is: the first concept group is
 `"dementia"[tiab] OR "Dementia"[MeSH Terms] OR "Alzheimer's"[tiab] OR "Alzheimer Disease"[MeSH Terms]`, joined to the
 other groups with AND (the corrected query). The MeSH term "Dementia" also covers its sub-headings (Alzheimer, vascular,
-Lewy body, frontotemporal). The screening rule I1 of the draft codebook covers dementia too. Variants of that group, run on PubMed:
+Lewy body, frontotemporal). The screening rule I1 of the AI/ML codebook covers dementia too. Variants of that group, run on PubMed:
 
 | Dementia group | Count | New vs the 1,855 | Of the 1,855 lost |
 |---|---|---|---|

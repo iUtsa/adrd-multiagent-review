@@ -5,7 +5,7 @@ rules as the keyword baseline (scripts/score_baselines.py), so scores from a
 fake run are a plumbing check, never a result.
 
 With the placeholder codebook it uses the built-in patterns below. With any codebook
-whose rules carry `keywords:` (e.g. configs/codebook_aiml_draft.yaml) it follows those
+whose rules carry `keywords:` (e.g. configs/codebook_aiml.yaml) it follows those
 instead, so a new topic can be run end to end without a key.
 """
 

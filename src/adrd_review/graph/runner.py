@@ -105,6 +105,9 @@ class RunConfig(BaseModel):
     eligibility: Literal["off", "fulltext"] = "off"
     # Title screening before the abstract (the professor's team: titles -> abstracts -> full text)
     title_stage: bool = False
+    # Extraction and annotation of included articles. Off for a counts-only run (how many pass each
+    # stage): saves the extraction call and one annotation call per reviewer for every included paper.
+    annotate: bool = True
     eligibility_max_chars: int = 80000
     pdf_dir: str = "data/pdfs"
     # Reviewer weights computed on a calibration run (python -m adrd_review.eval.weights);
@@ -172,6 +175,7 @@ def build_graph(config: RunConfig, codebook: Codebook, gold: list[GoldRecord], c
         fulltext=config.fulltext,
         fulltext_max_chars=config.fulltext_max_chars,
         title_stage=config.title_stage,
+        annotate=config.annotate,
         eligibility=config.eligibility == "fulltext",
         eligibility_max_chars=config.eligibility_max_chars,
         fulltext_source=_fulltext_source(config),

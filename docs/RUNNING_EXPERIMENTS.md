@@ -31,7 +31,7 @@ The professor's team screened titles first, then abstracts, then full papers. Th
 | Config | What it is |
 |---|---|
 | **`E4_threestage_gemini.yaml`** / `E4_threestage_fake.yaml` | E4 with title, abstract and full-text stages, on the gold standard (scored) |
-| **`PROF_search_gemini.yaml`** / `PROF_search_fake.yaml` | The professor's 1,855 search results through all three stages, **unlabelled: counts only**, with the DRAFT AI/ML codebook |
+| **`PROF_search_gemini.yaml`** / `PROF_search_fake.yaml` | The professor's 1,855 search results through all three stages, **unlabelled: counts only** (what the professor asked for), AI/ML codebook v0.2.0, extraction and annotation off |
 
 Every run prints and saves **how many articles pass each stage and why the rest were excluded** (PRISMA flow: `report.json` → `flow`, and `flow.png`). Example (stand-in model, plumbing only):
 
@@ -45,7 +45,7 @@ ARTICLES THROUGH EACH STAGE (PRISMA flow)
   INCLUDED                      1512   (confirmed 904, waiting for a person 608)
 ```
 
-Real counts for the 1,855 need Gemini: about $143 at most and ~9 hours (`python -m adrd_review.preflight configs/runs/PROF_search_gemini.yaml`); try `--limit 100` first (≈ $8).
+Real counts for the 1,855 need Gemini: about $107 at most and ~7 hours (`python -m adrd_review.preflight configs/runs/PROF_search_gemini.yaml`); try `--limit 100` first (≈ $6).
 
 ## Before every real run: preflight
 

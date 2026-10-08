@@ -1,4 +1,4 @@
-"""Three-stage review (titles -> abstracts -> full text), stage counts, unlabelled corpora, draft codebook."""
+"""Three-stage review (titles -> abstracts -> full text), stage counts, unlabelled corpora, the AI/ML codebook."""
 
 import json
 from pathlib import Path
@@ -20,7 +20,7 @@ from adrd_review.tools.pmc import FullText, Section
 
 ROOT = Path(__file__).resolve().parents[1]
 CODEBOOK = load_codebook(ROOT / "configs/codebook.yaml")
-DRAFT = load_codebook(ROOT / "configs/codebook_aiml_draft.yaml")
+AIML = load_codebook(ROOT / "configs/codebook_aiml.yaml")
 
 ON_TOPIC = Article(pmid="1", title="The MMSE for dementia in older adults.", abstract="We evaluated the MMSE for dementia.")
 OFF_TOPIC = Article(pmid="2", title="Exercise and blood pressure in young athletes.",
@@ -138,7 +138,7 @@ def test_flow_without_title_stage_or_gold():
     assert "1. Abstract screening" in format_flow(f)
 
 
-# ---- unlabelled corpus and the draft codebook -----------------------------------------------
+# ---- unlabelled corpus and the AI/ML codebook -----------------------------------------------
 
 
 def test_unlabelled_run_reads_a_pmid_list(tmp_path):
@@ -159,23 +159,28 @@ def test_human_gold_refused_without_gold():
         build_graph(cfg, CODEBOOK, [])
 
 
-def test_draft_codebook_is_marked_and_names_the_real_topic():
-    assert DRAFT.status == "draft" and "machine learning" in DRAFT.topic
-    assert [r.id for r in DRAFT.screening.inclusion] == ["I1", "I2", "I3", "I4"]
-    assert all(r.keywords for r in DRAFT.screening.inclusion)
+def test_aiml_codebook_has_the_professors_criteria_and_names_the_real_topic():
+    assert AIML.version == "0.2.0" and "machine learning" in AIML.topic
+    assert [r.id for r in AIML.screening.inclusion] == ["I1", "I2", "I3", "I4"]
+    assert all(r.keywords for r in AIML.screening.inclusion)
+    rules = {r.id: " ".join(r.text.split()) for r in AIML.rules}
+    assert "MCI alone" in rules["I1"] or "MCI) counts ONLY together" in rules["I1"]  # professor, 2026-10-07
+    assert "Logistic regression counts" in rules["I2"] and "65 or over" in rules["I4"]
+    assert "Full papers in conference proceedings are NOT excluded" in rules["E2"]
+    assert [r.id for r in AIML.rules if "PROPOSED" in r.source] == ["I4", "E3", "E4"]
     from adrd_review.agents import screening
-    assert "scoping review of AI and machine learning" in screening.system_prompt(DRAFT)
-    assert "keywords" not in screening.system_prompt(DRAFT).lower()  # stand-in hints never reach a real model
+    assert "scoping review of AI and machine learning" in screening.system_prompt(AIML)
+    assert "keywords" not in screening.system_prompt(AIML).lower()  # stand-in hints never reach a real model
     # the placeholder codebook's prompts are unchanged (cached answers stay valid)
     assert "scoping review of dementia screening research" in screening.system_prompt(CODEBOOK)
 
 
-def test_fake_model_follows_the_draft_codebook_through_three_stages():
+def test_fake_model_follows_the_aiml_codebook_through_three_stages():
     ml = Article(pmid="7", title="Deep learning on MRI to detect Alzheimer's disease in older adults.",
                  abstract="We trained a convolutional neural network on ADNI MRI scans of 800 older adults to predict dementia.")
     review = Article(pmid="8", title="Machine learning for dementia: a systematic review.", abstract="We reviewed 40 studies.")
     animal = Article(pmid="9", title="Gut microbes in young mice.", abstract="Mice were fed a diet.")
-    g = graph(codebook=DRAFT, source=lambda a: FullTextResult(None, None, "none", link=None))
+    g = graph(codebook=AIML, source=lambda a: FullTextResult(None, None, "none", link=None))
     s = g.invoke({"article": ml})
     assert s["title_decision"].labels == ["include"] and s["screening_decision"].labels == ["include"]
     assert "ADNI" in s["annotation_decisions"]["dataset_source"].labels
@@ -190,5 +195,21 @@ def test_preflight_estimates_the_unlabelled_search_run(monkeypatch):
     monkeypatch.chdir(ROOT)
     rep = check("configs/runs/PROF_search_fake.yaml", calls=False, limit=20)
     assert not rep.failed
-    assert any("DRAFT" in t for _, t in rep.lines) and any("unlabelled" in t for _, t in rep.lines)
+    assert any("PROPOSED" in t for _, t in rep.lines) and any("unlabelled" in t for _, t in rep.lines)
+    assert not any("extraction" in t or "annotation" in t for _, t in rep.lines)  # counts-only run
     assert json.loads(json.dumps(rep.lines))  # plain data
+
+
+def test_annotate_off_stops_after_screening():
+    llm = FakeLLM(ModelConfig(provider="fake", model="keyword-rules"), default_responders(CODEBOOK, "keyword-rules"))
+    opts = PipelineOptions(title_stage=True, eligibility=True, annotate=False,
+                           fulltext_source=lambda a: FullTextResult(PAPER, "pmc", "PMC1"))
+    s = build_pipeline(CODEBOOK, llm, llm, [Reviewer("A", llm, llm)], opts).invoke({"article": ON_TOPIC})
+    assert s["eligibility_decision"].labels == ["include"]
+    assert "extraction" not in s and not s.get("annotation_votes")
+    assert {u.role for u in s["usage"]} == {"title", "triage", "screening", "eligibility"}
+    assert flow_counts([s])["included"]["confirmed"] == 1
+    # one stage only (no full text) also stops before extraction
+    opts1 = PipelineOptions(annotate=False)
+    s1 = build_pipeline(CODEBOOK, llm, llm, [Reviewer("A", llm, llm)], opts1).invoke({"article": ON_TOPIC})
+    assert s1["screening_decision"].labels == ["include"] and "extraction" not in s1

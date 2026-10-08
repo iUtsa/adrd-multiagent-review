@@ -4,6 +4,33 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-10-08 — The professor's criteria in the codebook; counts-only runs
+
+**Professor's answers (email, 2026-10-07):**
+- No comparison with the human reviewers for now. She wants the **number of papers at title, abstract and full-text screening**.
+- MCI alone does not count; MCI together with Alzheimer's or dementia counts.
+- Logistic regression alone counts as ML.
+- Reviews do not count; full papers in conference proceedings count, abstract-only publications do not.
+- Older adults means 65 or over.
+- Previous system: a dual agent (no further detail).
+
+**Codebook v0.2.0** (`configs/codebook_aiml.yaml`, renamed from `codebook_aiml_draft.yaml`):
+- I1 now excludes MCI-only studies; I2 counts logistic regression; I4 means age 65+.
+- New exclusions: E1 Review, E2 Abstract only.
+- Still PROPOSED, for her to confirm:
+  - **I4: a mean or median age of 65+ counts.** Read literally, "65 or over" would exclude every study on ADNI, whose participants are aged 55–90 (mean ~73), and ADNI appears in 329 of the 1,855 abstracts (18%).
+  - E3: editorials, protocols without results, retracted papers (4 retracted papers and 6 trial protocols are in the corpus).
+  - E4: animal or cell studies.
+- Worked examples added for I1 and I4.
+
+**`annotate: false`**: a counts-only run stops after full-text screening (no extraction, no annotation). Set in `PROF_search_*`. The Gemini estimate for all 1,855 papers falls from ~$143 to **~$107 at most, ~7 hours**; a 100-paper pilot costs ~$6. Preflight now warns about PROPOSED rules.
+
+**Checked:** stand-in run on all 1,855 papers with v0.2.0, 0 failures, 29 s (counts are plumbing only). **Tests: 139 pass.**
+
+**Still needed for the real counts:** the Gemini key, and the team's PDFs. 602 papers that pass the abstract stage have no free full text, so the full-text count is incomplete without them.
+
+---
+
 ## 2026-10-03 — Three stages like the human team (titles → abstracts → full text), stage counts, step 4 finished
 
 **Step 4 finished: `E2_groq`, all 40 calibration articles, 0 failures** (`data/runs/E2_groq/20261002-113941/`).
