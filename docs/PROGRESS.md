@@ -4,6 +4,30 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-10-10 — Claude models, first real pilot on the professor's search, four fixes
+
+Gemini on hold. Anthropic and OpenAI keys added to `.env`. **The OpenAI account has no credit** ("You have no credits remaining"); the Anthropic key works.
+
+**Configs:** `PROF_search_claude.yaml` (Sonnet 5.5 / Sonnet 4.6 / Haiku 5.5, adjudicator Opus 5.5) and `PROF_search_mixed.yaml` (OpenAI gpt-6-sol replaces Sonnet 4.6). See [MODELS.md](MODELS.md). Prices in `configs/prices.yaml`.
+
+**Pilot, 100 random papers** (`python -m adrd_review.graph.runner configs/runs/PROF_search_claude.yaml --sample 100`; `data/runs/PROF_search_claude/20261010-152004/`):
+- **65 papers completed; 35 failed because the Anthropic account ran out of credit** mid-run. They were kept (predicted include), not dropped.
+- Cost **$6.37 for 65 papers (~$0.10/paper)**, 4 minutes. By role: eligibility $2.06, screening $1.57, title $1.43, adjudicator $1.24.
+- Of the 65: 12 excluded at title, 9 at abstract, 44 sought at full text (23 retrieved, 21 not retrieved), 9 still unclear at full text. Panel agreement: titles κ 0.72, abstracts κ 0.68, full text κ 0.21.
+- Not a result: incomplete, and the fixes below change the full-text stage.
+
+**Fixed (found by the pilot):**
+1. **Tables were missing from PubMed Central full texts.** "Age unclear" (I4) was the most common open judgment at full text (15 times), and the participants' age is usually only in Table 1. `tools/pmc.py` now adds every table (caption, one line per row, footnotes) as a "Tables" section, and tables are sent early for long papers. Cached full texts carry a parser version, so older ones are fetched again automatically (refresh running: `scripts/fetch_search_corpus.py --no-oa`).
+2. **The verifier flagged includes at abstract stage** because the age was not reported, though screening keeps such papers by design. Its instructions now state what "supported" means at each stage. It still caught real problems (a study of simulated MRI scans; "cognitive impairment, not dementia").
+3. **A run kept going after the account ran out of credit** (5 retries per call, then every remaining article). Now the first out-of-credit error stops the call at once and the runner starts no new articles; re-running the same command resumes from the cache.
+4. **Cost was not reported for Claude.** Usage is now priced from `configs/prices.yaml`, including prompt-cache rates.
+
+**Added:** `temperature: null` (newer models reject it), `--sample N` (fixed random pilot), Anthropic prompt caching (`prompt_cache: true`), schema overhead in the preflight estimate. **Tests: 144 pass.**
+
+**Needed:** Anthropic credit (full run ~$180 at the pilot rate, less with caching); OpenAI credit to use the mixed config.
+
+---
+
 ## 2026-10-08 (later) — Older adults 60+; papers without full text left out
 
 The professor sent the review's age groups (young adult 20–39, adult/middle age 40–59, **older adult 60+**). She also said papers without obtainable full text need not all be covered ("whatever we can pass through"). Gemini access is on the way.

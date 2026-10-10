@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, Literal, Protocol, TypeVar
 
+import yaml
 from pydantic import BaseModel
 
 from adrd_review.schemas import Usage
@@ -35,7 +36,8 @@ Provider = Literal["google", "anthropic", "openai", "openrouter", "groq", "ollam
 class ModelConfig(BaseModel):
     provider: Provider
     model: str
-    temperature: float = 0.0
+    # None = do not send it (newer Claude and OpenAI models reject a temperature setting)
+    temperature: float | None = 0.0
     max_tokens: int | None = 2048
     requests_per_minute: float | None = None  # stay under free-tier limits
     tokens_per_minute: int | None = None  # provider limit, if any (preflight checks calls fit)
@@ -46,6 +48,9 @@ class ModelConfig(BaseModel):
     # How LangChain asks for structured output: None = provider default, or
     # "function_calling" / "json_schema" / "json_mode" (e.g. for OpenAI-compatible hosts).
     structured_method: str | None = None
+    # Anthropic prompt caching: the instructions and answer form, identical for every article a reviewer
+    # sees, are cached by the provider and billed at a fraction of the input price on repeat calls.
+    prompt_cache: bool = False
     # Extra constructor options passed straight to the LangChain model, e.g. for Gemini
     # on Vertex AI: {vertexai: true, project: my-gcp-project, location: us-central1},
     # or {thinking_budget: 0} to turn off Gemini's thinking step.
@@ -64,6 +69,32 @@ class LLMResult(Generic[T]):
 
 class LLMError(RuntimeError):
     pass
+
+
+class OutOfCredit(LLMError):
+    """The provider account has no credit left. Retrying cannot help, so the whole run stops."""
+
+
+# Set when any call finds the account out of credit; the runner then stops starting new articles.
+OUT_OF_CREDIT = threading.Event()
+_CREDIT_SIGNS = ("credit balance is too low", "insufficient_quota", "credit_balance_exhausted", "no credits remaining")
+
+
+def is_out_of_credit(error: BaseException) -> bool:
+    text = str(error).lower()
+    return any(s in text for s in _CREDIT_SIGNS)
+
+
+_PRICES: dict | None = None
+
+
+def listed_price(label: str) -> dict | None:
+    """USD per million tokens from configs/prices.yaml, when the model config gives none."""
+    global _PRICES
+    if _PRICES is None:
+        path = Path("configs/prices.yaml")
+        _PRICES = yaml.safe_load(path.read_text()).get("models", {}) if path.exists() else {}
+    return _PRICES.get(label)
 
 
 class LLM(Protocol):
@@ -195,7 +226,9 @@ def retry_after_seconds(error: Exception) -> float | None:
 def make_chat_model(config: ModelConfig):
     """Build the LangChain chat model for a config (imports only what is needed)."""
     p = config.provider
-    kw = {"model": config.model, "temperature": config.temperature, **config.extra}
+    kw = {"model": config.model, **config.extra}
+    if config.temperature is not None:
+        kw["temperature"] = config.temperature
     if p == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
@@ -238,11 +271,19 @@ class LangChainLLM:
         self.max_attempts = max_attempts
         self.limiter = shared_limiter(config)
 
-    def _cost(self, tokens_in: int, tokens_out: int) -> float | None:
+    def _cost(self, tokens_in: int, tokens_out: int, cache_read: int = 0, cache_write: int = 0) -> float | None:
+        """`tokens_in` includes cached tokens (LangChain's count); those are re-priced at the cache rates."""
         c = self.config
-        if c.price_in_per_mtok is None or c.price_out_per_mtok is None:
-            return None
-        return (tokens_in * c.price_in_per_mtok + tokens_out * c.price_out_per_mtok) / 1e6
+        if c.price_in_per_mtok is not None and c.price_out_per_mtok is not None:
+            p = {"input": c.price_in_per_mtok, "output": c.price_out_per_mtok}
+        else:
+            p = listed_price(c.label)
+            if p is None:
+                return None
+        fresh = max(0, tokens_in - cache_read - cache_write)
+        read = p.get("cache_read", 0.1 * p["input"])
+        write = p.get("cache_write", 1.25 * p["input"])
+        return (fresh * p["input"] + cache_read * read + cache_write * write + tokens_out * p["output"]) / 1e6
 
     def structured(self, schema: type[T], system: str, user: str, role: str) -> LLMResult[T]:
         key = ResponseCache.key(self.config, schema, system, user, self.namespace)
@@ -264,7 +305,11 @@ class LangChainLLM:
             m = methods[i % len(methods)]
             return self.chat.with_structured_output(schema, include_raw=True, **({"method": m} if m else {}))
 
-        messages = [SystemMessage(content=system), HumanMessage(content=user)]
+        if self.config.provider == "anthropic" and self.config.prompt_cache:
+            sys_msg = SystemMessage(content=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}])
+        else:
+            sys_msg = SystemMessage(content=system)
+        messages = [sys_msg, HumanMessage(content=user)]
         # Rough size of this call, for the tokens-per-minute budget (corrected after the call).
         estimate = (len(system) + len(user)) / 4 + (self.config.max_tokens or 1000) / 2
         last_error: Any = None
@@ -275,6 +320,9 @@ class LangChainLLM:
                 out = runnable_for(which).invoke(messages)
             except Exception as e:  # network, rate limit, provider error, invalid tool call
                 last_error = e
+                if is_out_of_credit(e):
+                    OUT_OF_CREDIT.set()
+                    raise OutOfCredit(f"{self.config.label}: the account is out of credit ({e})") from e
                 if attempt == self.max_attempts:
                     break
                 # Per-minute token limits (e.g. Groq free tier: 8,000 tokens/min) need a real pause.
@@ -300,6 +348,8 @@ class LangChainLLM:
                 continue
             meta = getattr(out.get("raw"), "usage_metadata", None) or {}
             tin, tout = int(meta.get("input_tokens", 0)), int(meta.get("output_tokens", 0))
+            details = meta.get("input_token_details") or {}
+            cache_read, cache_write = int(details.get("cache_read") or 0), int(details.get("cache_creation") or 0)
             if tin or tout:
                 self.limiter.record(estimate, tin + tout)
             usage = Usage(
@@ -307,7 +357,8 @@ class LangChainLLM:
                 model=self.config.label,
                 input_tokens=tin,
                 output_tokens=tout,
-                cost_usd=self._cost(tin, tout),
+                cost_usd=self._cost(tin, tout, cache_read, cache_write),
+                prompt_cache_read_tokens=cache_read,
                 seconds=round(seconds, 3),
             )
             self.cache.put(key, {"parsed": parsed.model_dump(), "usage": usage.model_dump()})

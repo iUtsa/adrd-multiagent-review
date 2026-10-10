@@ -234,3 +234,80 @@ def test_missing_fulltext_not_retrieved_is_left_out_and_counted():
     assert f["excluded"] == 0 and f["passed"] == 2 and f["still_open"]["no_fulltext"] == 1
     assert flow_counts([dropped, found])["included"]["total"] == 1
     assert "(left out)" in format_flow(flow_counts([dropped, found]))
+
+
+def test_temperature_can_be_left_out_for_models_that_reject_it():
+    from adrd_review.llm import make_chat_model
+
+    m = make_chat_model(ModelConfig(provider="anthropic", model="claude-haiku-5-5", temperature=None, extra={"api_key": "x"}))
+    assert getattr(m, "temperature", None) is None
+    m = make_chat_model(ModelConfig(provider="anthropic", model="claude-haiku-5-5", extra={"api_key": "x"}))
+    assert m.temperature == 0.0
+
+
+def test_sample_is_fixed_and_keeps_list_order(tmp_path, monkeypatch):
+    import random
+
+    from adrd_review.graph import runner
+
+    pmids = [str(100000 + i) for i in range(50)]
+    chosen = set(random.Random(runner.SAMPLE_SEED).sample(pmids, 10))
+    assert chosen == set(random.Random(runner.SAMPLE_SEED).sample(pmids, 10))  # same pilot every time
+    assert [p for p in pmids if p in chosen] == sorted(chosen, key=pmids.index)
+
+
+def test_out_of_credit_stops_at_once_and_skips_remaining_articles():
+    from adrd_review.graph.runner import run_articles
+    from adrd_review.llm import OUT_OF_CREDIT, LangChainLLM, OutOfCredit, ResponseCache
+
+    calls = []
+
+    class Broke:
+        def with_structured_output(self, *a, **k):
+            return self
+
+        def invoke(self, _messages):
+            calls.append(1)
+            raise RuntimeError("Error code: 400 - Your credit balance is too low to access the Anthropic API.")
+
+    OUT_OF_CREDIT.clear()
+    try:
+        llm = LangChainLLM(ModelConfig(provider="anthropic", model="m", temperature=None), chat_model=Broke(),
+                           cache=ResponseCache(None))
+        with pytest.raises(OutOfCredit):
+            title_screening.run(ON_TOPIC, CODEBOOK, llm)
+        assert len(calls) == 1  # not retried
+        g = build_pipeline(CODEBOOK, llm, llm, [Reviewer("A", llm, llm)], PipelineOptions())
+        _, failures, _ = run_articles(g, [ON_TOPIC, OFF_TOPIC], concurrency=1)
+        assert len(failures) == 2 and all("OutOfCredit" in f["error"] for f in failures)
+        assert len(calls) == 1  # the run started nothing new
+    finally:
+        OUT_OF_CREDIT.clear()
+
+
+def test_anthropic_prompt_cache_marks_the_instructions_and_prices_cached_tokens():
+    from types import SimpleNamespace
+
+    from adrd_review.llm import LangChainLLM, ResponseCache
+
+    seen = {}
+
+    class Chat:
+        def with_structured_output(self, *a, **k):
+            return self
+
+        def invoke(self, messages):
+            seen["system"] = messages[0].content
+            raw = SimpleNamespace(usage_metadata={"input_tokens": 3000, "output_tokens": 100,
+                                                  "input_token_details": {"cache_read": 2500, "cache_creation": 0}})
+            return {"parsed": answer([("I1", "unclear", None)]), "raw": raw}
+
+    cfg = ModelConfig(provider="anthropic", model="claude-sonnet-5-5", temperature=None, prompt_cache=True)
+    r = LangChainLLM(cfg, chat_model=Chat(), cache=ResponseCache(None)).structured(ScreeningAnswer, "RULES", "PAPER", role="title")
+    assert seen["system"] == [{"type": "text", "text": "RULES", "cache_control": {"type": "ephemeral"}}]
+    # 500 fresh tokens at $2/M + 2,500 cached at $0.10/M + 100 out at $10/M (configs/prices.yaml)
+    assert r.usage.prompt_cache_read_tokens == 2500
+    assert r.usage.cost_usd == pytest.approx((500 * 2 + 2500 * 0.10 + 100 * 10) / 1e6)
+    plain = LangChainLLM(cfg.model_copy(update={"prompt_cache": False}), chat_model=Chat(), cache=ResponseCache(None))
+    plain.structured(ScreeningAnswer, "RULES", "PAPER", role="title")
+    assert seen["system"] == "RULES"

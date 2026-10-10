@@ -44,7 +44,7 @@ from adrd_review.eval.score import evaluate, format_report
 from adrd_review.freeze import prompts_sha
 from adrd_review.gold import GoldRecord, file_sha256, load_gold, write_gold
 from adrd_review.graph.pipeline import PipelineOptions, Reviewer, build_pipeline, finally_included
-from adrd_review.llm import LLM, ModelConfig, build_llm
+from adrd_review.llm import LLM, OUT_OF_CREDIT, ModelConfig, build_llm
 from adrd_review.schemas import Article
 from adrd_review.split import load_split
 from adrd_review.tools.pubmed import fetch_articles
@@ -257,6 +257,8 @@ def run_articles(graph, articles: list[Article], concurrency: int = 4, threaded_
 
     def one(article: Article):
         cfg = {"configurable": {"thread_id": article.pmid}} if threaded_config else None
+        if OUT_OF_CREDIT.is_set():  # no point starting more articles: re-run once credit is added
+            return None, {"pmid": article.pmid, "error": "OutOfCredit: not started (the account ran out of credit)", "trace": ""}
         try:
             state = graph.invoke({"article": article}, cfg)
             return state, None
@@ -275,6 +277,9 @@ def run_articles(graph, articles: list[Article], concurrency: int = 4, threaded_
             else:
                 states.append(state)
                 print(f"  [{i}/{len(articles)}] {state['article'].pmid} {_progress(state)}", file=sys.stderr)
+    if OUT_OF_CREDIT.is_set():
+        print("\nSTOPPED: the model account ran out of credit. Add credit, then run the same command again: "
+              "finished calls come from the cache, so only the rest is paid for.", file=sys.stderr)
     return states, failures, paused
 
 
@@ -467,6 +472,9 @@ def print_summary(report: dict, config: RunConfig, part: str, out: Path, usages_
     print(f"\nSaved in {out}/")
 
 
+SAMPLE_SEED = 20261010
+
+
 def select_pmids(config: RunConfig, part: str, gold: list[GoldRecord]) -> list[str]:
     """The articles to run: the PMID list of an unlabelled corpus, or one part of the gold split."""
     if config.pmids_file:
@@ -484,6 +492,7 @@ def execute(
     out_root: str = "data/runs",
     config_path: str | None = None,
     repeat: int = 0,
+    sample: int | None = None,
 ) -> Path:
     """repeat = 0: normal run (shares the response cache). repeat >= 1: an independent
     repeat whose model answers are cached separately, so the model is really called again."""
@@ -497,6 +506,13 @@ def execute(
     codebook: Codebook = load_codebook(config.codebook)
     gold = load_gold(config.gold, codebook) if config.gold else []
     pmids = select_pmids(config, part, gold)
+    if sample and sample < len(pmids):
+        # A fixed random sample (same seed every time), so a pilot is representative and repeatable;
+        # its answers are cached, so a later full run does not pay for them again.
+        import random
+
+        chosen = set(random.Random(SAMPLE_SEED).sample(pmids, sample))
+        pmids = [p for p in pmids if p in chosen]
     if limit:
         pmids = pmids[:limit]
 
@@ -526,6 +542,7 @@ def execute(
         "part": part,
         "pmids": pmids,
         "limit": limit,
+        "sample": sample,
         "repeat": repeat,
         "started_utc": stamp,
         "wall_seconds": round(wall, 2),
@@ -559,11 +576,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("config", help="Run config YAML, e.g. configs/runs/E2_fake.yaml")
     ap.add_argument("--part", choices=["calibration", "test", "all"], help="Overrides the config")
     ap.add_argument("--limit", type=int, help="Only the first N articles (quick checks)")
+    ap.add_argument("--sample", type=int, help="A fixed random sample of N articles (pilot runs)")
     ap.add_argument("--repeat", type=int, default=0, help="Repeat number (1, 2, 3...): calls the model again instead of using cached answers")
     args = ap.parse_args(argv)
     if args.part == "test":
         print("NOTE: running on the TEST set. Only do this for final, frozen runs.\n", file=sys.stderr)
-    execute(load_run_config(args.config), part=args.part, limit=args.limit, config_path=args.config, repeat=args.repeat)
+    execute(load_run_config(args.config), part=args.part, limit=args.limit, config_path=args.config, repeat=args.repeat,
+            sample=args.sample)
     return 0
 
 

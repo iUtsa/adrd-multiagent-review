@@ -41,20 +41,57 @@ class Section(BaseModel):
     text: str
 
 
+# Bump when parse_jats changes what it extracts: cached full texts from an older parser are fetched again.
+# 2 (2026-10-10): tables included (participants' age is usually only in Table 1).
+PARSER_VERSION = 2
+
+
 class FullText(BaseModel):
     pmid: str
     pmcid: str
     sections: list[Section] = Field(default_factory=list)
     license: str | None = None
     fetched_at: str | None = None
+    parser_version: int = 1
 
     @property
     def text(self) -> str:
         return "\n\n".join(f"{s.title.upper()}: {s.text}" if s.title else s.text for s in self.sections)
 
 
-def _text(el: ET.Element) -> str:
-    return re.sub(r"\s+", " ", "".join(el.itertext())).strip()
+FLOATS = ("table-wrap", "fig", "table-wrap-group", "fig-group")
+MAX_TABLE_CHARS = 6000  # a very long (e.g. supplementary) table is cut; Table 1 demographics fit easily
+
+
+def _itertext(el: ET.Element, skip: tuple[str, ...]):
+    if _local(el.tag) in skip:
+        return
+    if el.text:
+        yield el.text
+    for child in el:
+        yield from _itertext(child, skip)
+        if child.tail:
+            yield child.tail
+
+
+def _text(el: ET.Element, skip: tuple[str, ...] = ()) -> str:
+    return re.sub(r"\s+", " ", "".join(_itertext(el, skip) if skip else el.itertext())).strip()
+
+
+def _table_text(wrap: ET.Element) -> str:
+    """One table as text: label, caption, then one line per row with cells separated by ' | '.
+    Tables hold what reviewers often need most (participants' age, sample size, settings)."""
+    head = " ".join(x for x in (_text(wrap.find("label")) if wrap.find("label") is not None else "",
+                                  _text(wrap.find("caption")) if wrap.find("caption") is not None else "") if x)
+    rows = []
+    for tr in wrap.iter():
+        if _local(tr.tag) == "tr":
+            cells = [_text(c) for c in tr if _local(c.tag) in ("td", "th")]
+            if any(cells):
+                rows.append(" | ".join(cells))
+    foot = [_text(f) for f in wrap.iter() if _local(f.tag) == "table-wrap-foot"]
+    text = "\n".join([head, *rows, *foot]).strip()
+    return text[:MAX_TABLE_CHARS] + (" [table cut]" if len(text) > MAX_TABLE_CHARS else "")
 
 
 def _local(tag: str) -> str:
@@ -87,17 +124,22 @@ def parse_jats(xml_text: str) -> tuple[list[Section], str | None]:
         full_title = f"{prefix} / {title}" if prefix and title else (title or prefix)
         if SKIP_SECTIONS.match(title or ""):
             return
-        paras = [_text(p) for p in sec.findall("p") if _text(p)]
+        paras = [_text(p, FLOATS) for p in sec.findall("p") if _text(p, FLOATS)]
         if paras:
             sections.append(Section(title=full_title, text=" ".join(paras)))
         for child in sec.findall("sec"):
             walk(child, full_title)
 
-    loose = [_text(p) for p in body.findall("p") if _text(p)]
+    loose = [_text(p, FLOATS) for p in body.findall("p") if _text(p, FLOATS)]
     if loose:
         sections.append(Section(title="", text=" ".join(loose)))
     for sec in body.findall("sec"):
         walk(sec, "")
+    # Tables, wherever JATS puts them (inside sections, paragraphs, or the floats group after the body).
+    tables = [_table_text(w) for w in article.iter() if _local(w.tag) == "table-wrap"]
+    tables = [t for t in tables if t]
+    if tables and sections:
+        sections.append(Section(title="Tables", text="\n\n".join(tables)))
     return sections, license_
 
 
@@ -112,7 +154,8 @@ def fetch_fulltext(
     cache = Path(cache_dir) / f"{article.pmid}.json"
     if cache.exists():
         data = json.loads(cache.read_text())
-        return FullText.model_validate(data) if data.get("sections") else None
+        if data.get("parser_version", 1) >= PARSER_VERSION:
+            return FullText.model_validate(data) if data.get("sections") else None
     client = client or PubMedClient.from_env()
     xml = client._request(
         "efetch.fcgi", {"db": "pmc", "id": article.pmcid.removeprefix("PMC"), "retmode": "xml"}
@@ -124,6 +167,7 @@ def fetch_fulltext(
         sections=sections,
         license=license_,
         fetched_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        parser_version=PARSER_VERSION,
     )
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(ft.model_dump_json(indent=2))  # also caches "no body" so we do not ask again

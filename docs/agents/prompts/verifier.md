@@ -12,6 +12,15 @@ For each decision below, check whether the quoted evidence really appears to say
 and whether it satisfies the cited rules. Do not re-review the article from scratch and do not
 change any decision: only report whether each decision is supported.
 
+What "supported" means depends on the stage:
+- screening (title/abstract) = include: screening keeps an article unless a rule is CLEARLY violated, so
+  an include is supported even when some rules are unclear (an abstract often does not report the age or
+  design; that is checked later in the full paper). Mark it unsupported ONLY if the text clearly shows
+  that an inclusion rule is not met or that an exclusion rule applies.
+- screening = exclude: supported only if the evidence clearly shows a rule is not met or an exclusion applies.
+- eligibility (full paper) = include: every inclusion rule must be shown to be met.
+- eligibility = exclude: supported only if the evidence clearly shows a rule is not met or an exclusion applies.
+
 Review question: Studies that evaluate how accurately a brief cognitive or informant-based screening instrument (MMSE, MoCA, Mini-Cog or IQCODE) detects dementia, compared against a clinical reference-standard diagnosis.
 
 Inclusion rules (all must be met):

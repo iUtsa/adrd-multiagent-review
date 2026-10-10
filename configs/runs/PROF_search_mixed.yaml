@@ -1,0 +1,57 @@
+# PROF_search_mixed: as PROF_search_claude, with an OpenAI reviewer (needs credit on the OpenAI account).
+# screening, with Claude models (Anthropic key, 2026-10-10). Gemini is on hold; the OpenAI account has no
+# credit yet (when it does, use PROF_search_mixed.yaml: an OpenAI reviewer replaces Sonnet 4.6).
+# Counts only (what the professor asked for, 2026-10-07): extraction and annotation off; papers whose
+# full text cannot be obtained are reported as "not retrieved" and left out.
+# Panel: two model families (Claude Sonnet 5.5, OpenAI gpt-6-sol, Claude Haiku 5.5) with three perspectives;
+# adjudicator Opus 5.5 (not on the panel). prompt_cache: true bills the repeated instructions at the cache rate. These models reject a temperature setting (temperature: null).
+# Check first (prints calls, time and cost):
+#   python -m adrd_review.preflight configs/runs/PROF_search_mixed.yaml
+#   python -m adrd_review.graph.runner configs/runs/PROF_search_mixed.yaml --sample 100   # pilot
+#   python -m adrd_review.graph.runner configs/runs/PROF_search_mixed.yaml                # all 1,855
+name: PROF_search_mixed
+condition: E3
+description: "Professor's 1,855 search results - title, abstract and full-text stages (counts only, no gold)"
+codebook: configs/codebook_aiml.yaml
+gold: null
+pmids_file: data/search/prof_query_pmids.txt
+corpus_dir: data/corpus_search
+part: all
+concurrency: 12
+
+roles:
+  triage:     {model: {provider: anthropic, model: claude-haiku-5-5, temperature: null, max_tokens: 1024}}
+  extraction: {model: {provider: anthropic, model: claude-sonnet-5-5, temperature: null, prompt_cache: true}}
+
+panel:
+  - id: A
+    persona: &clinical >-
+      a clinical neurologist who diagnoses dementia. You pay closest attention to whether the condition
+      studied really is dementia or a recognised stage on the way to it, and whether the participants
+      are older adults.
+    model: {provider: anthropic, model: claude-sonnet-5-5, temperature: null, prompt_cache: true}
+  - id: B
+    persona: &ml >-
+      a machine-learning researcher. You pay closest attention to whether the study really develops or
+      applies an AI or machine-learning method, and whether that method is used to detect, diagnose,
+      monitor or predict the condition.
+    model: {provider: openai, model: gpt-6-sol, temperature: null}
+  - id: C
+    persona: &methods >-
+      a research methodologist. You pay closest attention to whether the article is an original study
+      with human participants, and to its design and data source.
+    model: {provider: anthropic, model: claude-haiku-5-5, temperature: null, prompt_cache: true}
+
+adjudicator: {provider: anthropic, model: claude-opus-5-5, temperature: null, max_tokens: 4096}
+escalate_below: 0.6
+verifier:
+  enabled: true
+  model: {provider: anthropic, model: claude-haiku-5-5, temperature: null, max_tokens: 1024}
+human: none          # no person in the loop for a counts run: open decisions are kept and counted
+
+title_stage: true
+eligibility: fulltext
+eligibility_max_chars: 80000
+annotate: false      # counts only: stop after full-text screening
+missing_fulltext: not_retrieved   # no full text -> reported as not retrieved, left out (professor: we do not need every paper)
+pdf_dir: data/pdfs   # the team's PDFs, named <PMID>.pdf (data/search/pdfs_needed.csv lists the 737 missing)

@@ -2,7 +2,26 @@
 
 **Constraint (2026-09-30): the professor has provided a Gemini licence.** Everything in the plan runs on Gemini. One free non-Google provider (Groq) is optional and only adds an experiment; nothing depends on it.
 
-## Which model does what
+## Current plan (2026-10-10): Claude, with OpenAI when it has credit
+
+Gemini is on hold. Utsa added Anthropic and OpenAI keys (both in `.env`, never committed).
+
+| Role | `PROF_search_claude.yaml` | `PROF_search_mixed.yaml` (when OpenAI has credit) | $ per M tokens in / out |
+|---|---|---|---|
+| Reviewer A (clinical) | Claude Sonnet 5.5 | Claude Sonnet 5.5 | 2 / 10 |
+| Reviewer B (machine learning) | Claude Sonnet 4.6 | **OpenAI gpt-6-sol** (second family) | 3 / 15 · 2 / 10 |
+| Reviewer C (methods) | Claude Haiku 5.5 | Claude Haiku 5.5 | 0.10 / 0.50 |
+| Adjudicator (split decisions only) | Claude Opus 5.5 (not on the panel) | same | 4 / 20 |
+| Triage, verifier | Claude Haiku 5.5 | same | 0.10 / 0.50 |
+
+- **Three different models**, so their errors are less correlated than one model run three times; the mixed config adds a second model family, which the evidence favours. Groq stays out: its free daily token limit (200,000 per model) covers fewer than 100 papers a day.
+- **These models reject a temperature setting** (`temperature: null` in the configs).
+- **Prompt caching** (`prompt_cache: true`): each reviewer's instructions and answer form (~2,500 tokens) are identical for every paper and are billed at 5–10% of the input price after the first call.
+- **Account limits** (from response headers): 10,000 requests and 10 million input tokens per minute, so runs are not throttled.
+
+**Pilot (2026-10-10), 100 random search results** (`--sample 100`): 65 completed before the Anthropic account ran out of credit (the other 35 were kept, not dropped). Cost **$6.37 for 65 papers, about $0.10 per paper** (before prompt caching), 4 minutes. Full run estimate: about $180 at that rate; prompt caching should cut the title and abstract stages substantially (to be measured).
+
+## Which model does what (Gemini plan, on hold)
 
 | Role | Model | Why |
 |---|---|---|

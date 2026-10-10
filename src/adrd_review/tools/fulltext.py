@@ -27,7 +27,7 @@ DEFAULT_PDF_DIR = Path("data/pdfs")
 OA_PDF_DIR = Path("data/pdfs_oa")
 EPMC = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 
-PRIORITY = ("method", "participant", "design", "sample", "procedure", "measure", "result", "finding")
+PRIORITY = ("method", "participant", "design", "sample", "procedure", "measure", "result", "finding", "table")
 
 
 @dataclass

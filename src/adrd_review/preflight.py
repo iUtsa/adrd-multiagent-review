@@ -42,6 +42,7 @@ KEYS = {"google": "GOOGLE_API_KEY", "groq": "GROQ_API_KEY", "openai": "OPENAI_AP
         "anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
 FULLTEXT_TOKENS = 9700  # median body of a real paper (docs/FULLTEXT_PLAN.md); 90th pct ~14,100
 OUTPUT_TOKENS = 600
+SCHEMA_TOKENS = 1500  # the answer form (tool/JSON schema) sent with every structured call; measured 2026-10-10
 # Unlabelled corpora: assumed share passing each stage, for the call/cost estimate only (deliberately
 # high, so the estimate is an upper bound). Labelled runs use the gold standard's include rate instead.
 ASSUMED_TITLE_PASS = 0.8
@@ -169,9 +170,9 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
     sample = have[:50] or []
     art_tokens = statistics.median(len(render_article(a)) for a in sample) / 4 if sample else 600
     sys_tokens = len(screening.system_prompt(codebook)) / 4
-    abstract_call = int(sys_tokens + art_tokens + OUTPUT_TOKENS)
-    title_call = int(len(title_screening.system_prompt(codebook)) / 4 + 40 + OUTPUT_TOKENS)
-    fulltext_call = int(len(eligibility.system_prompt(codebook)) / 4 + art_tokens + FULLTEXT_TOKENS + OUTPUT_TOKENS)
+    abstract_call = int(sys_tokens + art_tokens + SCHEMA_TOKENS + OUTPUT_TOKENS)
+    title_call = int(len(title_screening.system_prompt(codebook)) / 4 + 40 + SCHEMA_TOKENS + OUTPUT_TOKENS)
+    fulltext_call = int(len(eligibility.system_prompt(codebook)) / 4 + art_tokens + FULLTEXT_TOKENS + SCHEMA_TOKENS + OUTPUT_TOKENS)
     fulltext_roles = {"eligibility", "extraction", "annotation", "adjudicator", "verifier"} if two_stage else set()
     for role, ms in roles.items():
         size = fulltext_call if role in fulltext_roles else title_call if role == "title" else abstract_call

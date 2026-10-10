@@ -170,7 +170,8 @@ class Usage(BaseModel):
     output_tokens: int = 0
     cost_usd: float | None = None
     seconds: float = 0.0
-    cached: bool = False
+    cached: bool = False  # answered from our response cache (no call made)
+    prompt_cache_read_tokens: int = 0  # input tokens billed at the provider's cheaper cache rate
 
 
 # --------------------------------------------------------------------------- #
