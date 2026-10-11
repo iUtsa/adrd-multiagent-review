@@ -282,7 +282,9 @@ def prepare_batches(config: RunConfig, codebook: Codebook, articles: list[Articl
         return [items[i:i + size] for i in range(0, len(items), size)]
 
     def stage(field: str, items: list[Article], size: int, fn, llm_of) -> None:
-        jobs = [(r, c) for r in reviewers for c in chunks(items, size)]
+        # Interleaved (batch 1 for A, B, C, then batch 2 ...): reviewers usually use different models, each
+        # with its own per-minute limit, so parallel workers should not all queue behind one model.
+        jobs = [(r, c) for c in chunks(items, size) for r in reviewers]
 
         def one(job):
             r, chunk = job
