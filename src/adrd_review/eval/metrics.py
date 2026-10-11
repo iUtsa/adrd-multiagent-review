@@ -211,7 +211,8 @@ def usage_summary(
     fields = ("input_tokens", "output_tokens", "cost_usd", "seconds")
     totals = {f: sum(u.get(f, 0) or 0 for u in usages) for f in fields}
     out = {
-        "calls": len(usages),
+        # a batch call is shared by its articles (batch_size each), so it counts once
+        "calls": round(sum(1 / max(1, u.get("batch_size", 1)) for u in usages)),
         "articles": n_articles,
         "total": totals,
         "per_article": {f: _div(totals[f], n_articles) for f in fields},

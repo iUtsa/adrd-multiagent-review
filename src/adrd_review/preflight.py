@@ -39,7 +39,8 @@ from adrd_review.llm import LangChainLLM, ModelConfig, ResponseCache
 from adrd_review.tools.pubmed import load_cached
 
 KEYS = {"google": "GOOGLE_API_KEY", "groq": "GROQ_API_KEY", "openai": "OPENAI_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
+        "anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY", "nvidia": "NVIDIA_API_KEY",
+        "mistral": "MISTRAL_API_KEY"}
 FULLTEXT_TOKENS = 9700  # median body of a real paper (docs/FULLTEXT_PLAN.md); 90th pct ~14,100
 OUTPUT_TOKENS = 600
 SCHEMA_TOKENS = 1500  # the answer form (tool/JSON schema) sent with every structured call; measured 2026-10-10
@@ -69,8 +70,8 @@ class Report:
 def models_by_role(cfg: RunConfig) -> dict[str, list[ModelConfig]]:
     panel = cfg.reviewer_configs()
     out = {
-        **({"title": [r.model for r in panel]} if cfg.title_stage else {}),
-        "triage": [cfg.roles["triage"].model],
+        **({"title": [r.title_model or r.model for r in panel]} if cfg.title_stage else {}),
+        **({"triage": [cfg.roles["triage"].model]} if cfg.triage else {}),
         "extraction": [cfg.roles["extraction"].model],
         "screening": [r.model for r in panel],
         "annotation": [r.annotation_model or r.model for r in panel],
@@ -78,7 +79,7 @@ def models_by_role(cfg: RunConfig) -> dict[str, list[ModelConfig]]:
     if not cfg.annotate:
         del out["extraction"], out["annotation"]
     if cfg.eligibility == "fulltext":
-        out["eligibility"] = [r.model for r in panel]
+        out["eligibility"] = [r.eligibility_model or r.model for r in panel]
     if cfg.adjudicator:
         out["adjudicator"] = [cfg.adjudicator]
     if cfg.verifier and cfg.verifier.enabled and cfg.verifier.model:
@@ -116,7 +117,10 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
     distinct: dict[str, ModelConfig] = {m.model_dump_json(): m for ms in roles.values() for m in ms}
     two_stage = cfg.eligibility == "fulltext"
 
-    # 2. keys
+    # 2. keys. A provider used ONLY for full-text screening may come later: articles reaching that stage
+    # wait (scripts/run_until_done.sh re-runs them once the key is in .env), so its missing key is a WARN.
+    later_ok = {m.provider for m in roles.get("eligibility", [])} - {
+        m.provider for role, ms in roles.items() if role != "eligibility" for m in ms}
     for provider in sorted({m.provider for m in distinct.values()}):
         if provider in ("fake", "ollama"):
             continue
@@ -125,6 +129,8 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
             rep.add("PASS", "google: Vertex AI settings in config (uses Google Cloud login, no API key)")
         elif os.getenv(KEYS[provider]):
             rep.add("PASS", f"{provider}: {KEYS[provider]} is set")
+        elif provider in later_ok:
+            rep.add("WARN", f"{provider}: {KEYS[provider]} is not set in .env; articles reaching full text wait for it")
         else:
             rep.add("FAIL", f"{provider}: {KEYS[provider]} is not set in .env")
 
@@ -134,7 +140,7 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
             if m.provider == "fake":
                 continue
             if m.provider in KEYS and not os.getenv(KEYS[m.provider]) and not m.extra.get("vertexai"):
-                rep.add("FAIL", f"{m.label}: not called (no key)")
+                rep.add("WARN" if m.provider in later_ok else "FAIL", f"{m.label}: not called (no key)")
                 continue
             try:
                 llm = LangChainLLM(m.model_copy(update={"max_tokens": 600}), cache=ResponseCache(None), max_attempts=1)
@@ -172,6 +178,10 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
     sys_tokens = len(screening.system_prompt(codebook)) / 4
     abstract_call = int(sys_tokens + art_tokens + SCHEMA_TOKENS + OUTPUT_TOKENS)
     title_call = int(len(title_screening.system_prompt(codebook)) / 4 + 40 + SCHEMA_TOKENS + OUTPUT_TOKENS)
+    if cfg.abstract_batch > 1:  # one call per batch: instructions once, articles and answers per article
+        abstract_call = int(sys_tokens + SCHEMA_TOKENS + cfg.abstract_batch * (art_tokens + OUTPUT_TOKENS))
+    if cfg.title_stage and cfg.title_batch > 1:
+        title_call = int(len(title_screening.system_prompt(codebook)) / 4 + SCHEMA_TOKENS + cfg.title_batch * 40 + 1500)
     fulltext_call = int(len(eligibility.system_prompt(codebook)) / 4 + art_tokens + FULLTEXT_TOKENS + SCHEMA_TOKENS + OUTPUT_TOKENS)
     fulltext_roles = {"eligibility", "extraction", "annotation", "adjudicator", "verifier"} if two_stage else set()
     for role, ms in roles.items():
@@ -193,7 +203,8 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
         rep.add("WARN", f"unlabelled corpus: the estimate assumes {ASSUMED_TITLE_PASS:.0%} pass titles and "
                         f"{ASSUMED_ABSTRACT_PASS:.0%} of those pass abstracts (an upper bound; real counts come from the run)")
     screened = n * (ASSUMED_TITLE_PASS if cfg.title_stage else 1)  # articles reaching abstract screening
-    per_role = {"title": n, "triage": screened, "screening": screened, "eligibility": n * kept * ft_share,
+    per_role = {"title": n / max(1, cfg.title_batch if cfg.title_stage else 1), "triage": screened,
+                "screening": screened / max(1, cfg.abstract_batch), "eligibility": n * kept * ft_share,
                 "extraction": n * kept * ft_share, "annotation": n * kept * ft_share, "adjudicator": 0.4 * screened, "verifier": screened}
     calls_by: dict[str, float] = defaultdict(float)
     tokens_by: dict[str, float] = defaultdict(float)
@@ -207,12 +218,13 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
     minutes = 0.0
     for label, c in calls_by.items():
         m = cfg_by[label]
-        if m.requests_per_day and c > m.requests_per_day:
-            rep.add("FAIL", f"{label}: ~{c:,.0f} calls needed but the limit is {m.requests_per_day:,}/day (split the run over days, or use --limit)")
-        if m.tokens_per_day and tokens_by[label] > m.tokens_per_day:
-            rep.add("FAIL", f"{label}: ~{tokens_by[label]:,.0f} tokens needed but the limit is {m.tokens_per_day:,} tokens/day "
-                            f"(use --limit, spread the model's roles over other models, or continue tomorrow: finished calls are cached)")
-        elif m.tokens_per_day and tokens_by[label] > 0.5 * m.tokens_per_day:
+        # Over a daily limit is not an error: scripts/run_until_done.sh continues each day from the cache.
+        days = max(c / m.requests_per_day if m.requests_per_day else 0,
+                   tokens_by[label] / m.tokens_per_day if m.tokens_per_day else 0)
+        if days > 1:
+            rep.add("WARN", f"{label}: ~{c:,.0f} calls / ~{tokens_by[label]:,.0f} tokens need about {days:.0f} days at its daily "
+                            f"limit; run it with scripts/run_until_done.sh (finished calls are cached)")
+        if 0.5 < days <= 1 and m.tokens_per_day and tokens_by[label] > 0.5 * m.tokens_per_day:
             rep.add("WARN", f"{label}: ~{tokens_by[label]:,.0f} tokens, over half its {m.tokens_per_day:,} tokens/day limit: "
                             f"one run per day on this model, and earlier calls today count too")
         rpm = m.requests_per_minute
@@ -221,7 +233,7 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
         if rpm:
             minutes = max(minutes, c / rpm)
     total_calls = sum(calls_by.values())
-    rep.add("PASS" if not any("calls needed" in t or "tokens needed" in t for _, t in rep.lines) else "WARN",
+    rep.add("PASS" if not any("daily limit" in t for _, t in rep.lines) else "WARN",
             f"about {total_calls:,.0f} model calls" + (f"; roughly {minutes:,.0f} minutes at the configured rate limits" if minutes else ""))
 
     # 8. cost

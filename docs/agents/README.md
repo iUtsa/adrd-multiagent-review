@@ -5,6 +5,7 @@ One document per agent. Every agent added to the system gets a document here, wr
 | Agent | Stage | Status | Build doc | Exact prompt |
 |---|---|---|---|---|
 | **Title screening (stage 0)** | 1. Title pass (three-stage runs) | Built (2026-10-03) | [title-screening.md](title-screening.md) | [prompts/title.md](prompts/title.md) |
+| **Batch screening** (titles / abstracts several per call) | 1–2, free-tier runs | Built (2026-10-11) | [batch-screening.md](batch-screening.md) | `TITLE_SYSTEM`, `ABSTRACT_SYSTEM` in `agents/batch.py` |
 | Triage | 1. Ingestion | Built (Day 4) | [triage.md](triage.md) | [prompts/triage.md](prompts/triage.md) |
 | Screening reviewer | 2. Screening panel | Built (Day 4); used ×3 in the panel (Day 5) | [screening-reviewer.md](screening-reviewer.md) | [prompts/screening.md](prompts/screening.md) |
 | **Full-text eligibility (stage 2)** | 2b. Full-text assessment | Built (2026-10-01) | [fulltext-eligibility.md](fulltext-eligibility.md) | [prompts/eligibility.md](prompts/eligibility.md) |

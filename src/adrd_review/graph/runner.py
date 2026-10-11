@@ -59,6 +59,8 @@ class ReviewerConfig(BaseModel):
     id: str
     model: ModelConfig
     annotation_model: ModelConfig | None = None  # defaults to `model`
+    title_model: ModelConfig | None = None  # title stage; defaults to `model`
+    eligibility_model: ModelConfig | None = None  # full-text stage (needs room for a whole paper); defaults to `model`
     persona: str | None = None
     weight: float = 1.0
 
@@ -105,6 +107,11 @@ class RunConfig(BaseModel):
     eligibility: Literal["off", "fulltext"] = "off"
     # Title screening before the abstract (the professor's team: titles -> abstracts -> full text)
     title_stage: bool = False
+    # Batch screening (free tiers limit calls per day): titles / abstracts judged per call. 1 = one per call.
+    title_batch: int = 1
+    abstract_batch: int = 1
+    # Triage only matters with `fulltext: when_needed`; false saves one call per article
+    triage: bool = True
     # Extraction and annotation of included articles. Off for a counts-only run (how many pass each
     # stage): saves the extraction call and one annotation call per reviewer for every included paper.
     annotate: bool = True
@@ -159,6 +166,8 @@ def build_graph(config: RunConfig, codebook: Codebook, gold: list[GoldRecord], c
             annotation_llm=llm_for(rc.annotation_model or rc.model),
             persona=rc.persona,
             weight=learned.get(rc.id, rc.weight),
+            title_llm=llm_for(rc.title_model) if rc.title_model else None,
+            eligibility_llm=llm_for(rc.eligibility_model) if rc.eligibility_model else None,
         )
         for rc in config.reviewer_configs()
     ]
@@ -178,6 +187,7 @@ def build_graph(config: RunConfig, codebook: Codebook, gold: list[GoldRecord], c
         fulltext=config.fulltext,
         fulltext_max_chars=config.fulltext_max_chars,
         title_stage=config.title_stage,
+        triage=config.triage,
         annotate=config.annotate,
         eligibility=config.eligibility == "fulltext",
         eligibility_max_chars=config.eligibility_max_chars,
@@ -252,15 +262,75 @@ def to_prediction(state: dict, two_stage: bool = False) -> GoldRecord:
     )
 
 
-def run_articles(graph, articles: list[Article], concurrency: int = 4, threaded_config: bool = False):
-    """Invoke the graph on each article in parallel. Returns (states, failures, paused PMIDs)."""
+def prepare_batches(config: RunConfig, codebook: Codebook, articles: list[Article], reviewers: list[Reviewer],
+                    concurrency: int = 4) -> tuple[dict[str, dict], dict[str, str]]:
+    """Batch title and abstract screening before the graph runs (config.title_batch / abstract_batch > 1).
+
+    Returns (initial graph state per PMID: prepared votes + their usage, deferred PMIDs with the reason).
+    A batch that fails (e.g. a free model's daily limit) defers its articles: they are left for the next
+    run, and the cache makes the batches already done free. Abstract batches are only formed once every
+    title is decided, so their composition (and cache keys) stay the same from run to run.
+    """
+    from adrd_review.agents import batch
+    from adrd_review.consensus import combine_title
+
+    initial = {a.pmid: {"prepared": {}, "usage": []} for a in articles}
+    deferred: dict[str, str] = {}
+    weights = {r.id: r.weight for r in reviewers}
+
+    def chunks(items: list[Article], size: int) -> list[list[Article]]:
+        return [items[i:i + size] for i in range(0, len(items), size)]
+
+    def stage(field: str, items: list[Article], size: int, fn, llm_of) -> None:
+        jobs = [(r, c) for r in reviewers for c in chunks(items, size)]
+
+        def one(job):
+            r, chunk = job
+            try:
+                return r, chunk, fn(chunk, codebook, llm_of(r), r.id, r.persona), None
+            except Exception as e:
+                return r, chunk, None, f"{type(e).__name__}: {str(e)[:300]}"
+
+        done = 0
+        with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+            for r, chunk, out, err in pool.map(one, jobs):
+                done += 1
+                if err:
+                    for a in chunk:
+                        deferred.setdefault(a.pmid, f"{field} batch, reviewer {r.id}: {err}")
+                    print(f"  [{field} batch {done}/{len(jobs)}] reviewer {r.id}: {len(chunk)} deferred: {err[:120]}", file=sys.stderr)
+                    continue
+                votes, usages = out
+                for a in chunk:
+                    initial[a.pmid]["prepared"].setdefault(field, {})[r.id] = votes[a.pmid]
+                    initial[a.pmid]["usage"].append(usages[a.pmid])
+                print(f"  [{field} batch {done}/{len(jobs)}] reviewer {r.id}: {len(chunk)} judged", file=sys.stderr)
+
+    passing = articles
+    if config.title_stage and config.title_batch > 1:
+        print(f"Title screening in batches of {config.title_batch}", file=sys.stderr)
+        stage("title", articles, config.title_batch, batch.run_titles, lambda r: r.for_title)
+        if deferred:
+            return initial, deferred  # abstracts wait until every title is decided (stable batches)
+        passing = [a for a in articles
+                   if combine_title(list(initial[a.pmid]["prepared"]["title"].values()), weights).labels == ["include"]]
+    if config.abstract_batch > 1 and passing:
+        print(f"Abstract screening in batches of {config.abstract_batch}: {len(passing)} articles", file=sys.stderr)
+        stage("screening", passing, config.abstract_batch, batch.run_abstracts, lambda r: r.llm)
+    return initial, deferred
+
+
+def run_articles(graph, articles: list[Article], concurrency: int = 4, threaded_config: bool = False,
+                 initial: dict[str, dict] | None = None):
+    """Invoke the graph on each article in parallel. Returns (states, failures, paused PMIDs).
+    `initial` adds per-article starting state (votes from batch calls and their usage)."""
 
     def one(article: Article):
         cfg = {"configurable": {"thread_id": article.pmid}} if threaded_config else None
         if OUT_OF_CREDIT.is_set():  # no point starting more articles: re-run once credit is added
             return None, {"pmid": article.pmid, "error": "OutOfCredit: not started (the account ran out of credit)", "trace": ""}
         try:
-            state = graph.invoke({"article": article}, cfg)
+            state = graph.invoke({"article": article, **(initial or {}).get(article.pmid, {})}, cfg)
             return state, None
         except Exception as e:
             return None, {"pmid": article.pmid, "error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()}
@@ -533,7 +603,19 @@ def execute(
     )
 
     started = time.monotonic()
-    states, failures, paused = run_articles(graph, articles, config.concurrency, threaded_config=checkpointer is not None)
+    initial, deferred = {}, {}
+    if (config.title_stage and config.title_batch > 1) or config.abstract_batch > 1:
+        initial, deferred = prepare_batches(config, codebook, articles, reviewers, config.concurrency)
+    ready = [a for a in articles if a.pmid not in deferred]
+    if deferred:
+        print(f"{len(deferred)} article(s) deferred (a batch call failed, e.g. a daily limit); run the same command "
+              "again later: finished batches come from the cache.", file=sys.stderr)
+        if config.title_stage and config.title_batch > 1 and any(r.startswith("title") for r in deferred.values()):
+            ready = []  # the title stage is not finished: nothing moves on yet
+    states, failures, paused = run_articles(graph, ready, config.concurrency, threaded_config=checkpointer is not None,
+                                            initial=initial)
+    failures += [{"pmid": a.pmid, "error": f"Deferred: {deferred.get(a.pmid, 'waiting for the title stage to finish')}", "trace": ""}
+                 for a in articles if a not in ready]
     wall = time.monotonic() - started
 
     meta = {

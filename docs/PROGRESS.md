@@ -4,6 +4,43 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-10-11 — Free tiers only; batch screening; unattended multi-day runs
+
+Decision (Utsa): use free model APIs (OpenRouter, Groq and others), even if slow. Details: [FREE_MODELS.md](FREE_MODELS.md).
+
+**Free sources checked today:**
+- **Groq:** works (key in `.env`).
+- **NVIDIA NIM and OpenRouter:** free, but need keys.
+- **GitHub Models:** the endpoint answers only "OK", so it is no longer usable.
+- **Cerebras:** now a paid trial.
+- **MCP:** connects models to tools; it does not run models, so it cannot replace a model API.
+
+**Built:**
+- **Batch screening** ([agents/batch-screening.md](agents/batch-screening.md)): 50 titles or 4 abstracts per call, with the same rules and per-article decisions. The stand-in model gives identical counts batched and unbatched.
+- **Per-stage models per reviewer** (`title_model`, `eligibility_model`): Groq cannot fit a full paper (8,000 tokens/min).
+- **Optional triage** (`triage: false`): saves a call per article.
+- **Providers:** `nvidia` and `mistral` (OpenAI-compatible).
+- **Waiting instead of failing:**
+  - a model whose daily limit is used up fails fast (`LimitReached`) and its articles are deferred;
+  - a model without a key makes only its articles wait.
+- **Preflight:**
+  - reports multi-day runs as days needed, not failures;
+  - warns, rather than fails, for keys needed only at full text.
+- **`scripts/run_until_done.sh`:** re-runs every 3 hours until no article is open; each try appends the flow counts to the log.
+
+**Model checks on real papers:**
+- **One batch of 50 titles:** Qwen excluded 3, all correct. The two gpt-oss models excluded about half, for not *mentioning* dementia or AI. Unanimity is required, so the panel excluded only those 3. The instructions were tightened.
+- **One batch of 5 abstracts:** the three models agreed (Parkinson's and MCI-only studies excluded). gpt-oss uses "medium" reasoning for abstracts.
+
+**Running since 2026-10-11 08:42** (`PROF_search_free`, unattended):
+- **Titles:** about 1 day.
+- **Abstracts:** about 2 weeks at Groq's 200,000 tokens/day per model.
+- **Full text:** waits for NVIDIA and OpenRouter keys.
+
+**Tests: 148 pass.**
+
+---
+
 ## 2026-10-10 — Claude models, first real pilot on the professor's search, four fixes
 
 Gemini on hold. Anthropic and OpenAI keys added to `.env`. **The OpenAI account has no credit** ("You have no credits remaining"); the Anthropic key works.

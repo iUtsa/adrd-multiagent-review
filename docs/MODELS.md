@@ -2,7 +2,11 @@
 
 **Constraint (2026-09-30): the professor has provided a Gemini licence.** Everything in the plan runs on Gemini. One free non-Google provider (Groq) is optional and only adds an experiment; nothing depends on it.
 
-## Current plan (2026-10-10): Claude, with OpenAI when it has credit
+## Now (2026-10-11): free tiers only
+
+Paid accounts have no credit, so the run uses free tiers: Groq for titles and abstracts, NVIDIA NIM and OpenRouter free models for full papers. Plan, limits, keys and timing: **[FREE_MODELS.md](FREE_MODELS.md)**. The paid configs below are kept for when credit is added.
+
+## Paid plan (2026-10-10): Claude, with OpenAI when it has credit
 
 Gemini is on hold. Utsa added Anthropic and OpenAI keys (both in `.env`, never committed).
 

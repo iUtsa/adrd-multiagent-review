@@ -30,7 +30,7 @@ from adrd_review.schemas import Usage
 
 T = TypeVar("T", bound=BaseModel)
 
-Provider = Literal["google", "anthropic", "openai", "openrouter", "groq", "ollama", "fake"]
+Provider = Literal["google", "anthropic", "openai", "openrouter", "groq", "ollama", "fake", "nvidia", "mistral"]
 
 
 class ModelConfig(BaseModel):
@@ -77,6 +77,13 @@ class OutOfCredit(LLMError):
 
 # Set when any call finds the account out of credit; the runner then stops starting new articles.
 OUT_OF_CREDIT = threading.Event()
+# Models whose daily (or other long) limit is used up: label -> time it resets. Calls to them fail at
+# once instead of each waiting and retrying, so a free-tier run moves on and is simply resumed later.
+EXHAUSTED: dict[str, float] = {}
+
+
+class LimitReached(LLMError):
+    """A model's daily limit is used up; calls fail fast until it resets (re-run then: the cache resumes)."""
 _CREDIT_SIGNS = ("credit balance is too low", "insufficient_quota", "credit_balance_exhausted", "no credits remaining")
 
 
@@ -237,12 +244,14 @@ def make_chat_model(config: ModelConfig):
         from langchain_google_genai import ChatGoogleGenerativeAI
 
         return ChatGoogleGenerativeAI(**kw, max_output_tokens=config.max_tokens)
-    if p in ("openai", "openrouter", "groq"):
+    if p in ("openai", "openrouter", "groq", "nvidia", "mistral"):
         from langchain_openai import ChatOpenAI
 
         hosts = {
             "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
             "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
+            "nvidia": ("https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY"),
+            "mistral": ("https://api.mistral.ai/v1", "MISTRAL_API_KEY"),
         }
         if p in hosts:
             url, env = hosts[p]
@@ -313,6 +322,9 @@ class LangChainLLM:
         # Rough size of this call, for the tokens-per-minute budget (corrected after the call).
         estimate = (len(system) + len(user)) / 4 + (self.config.max_tokens or 1000) / 2
         last_error: Any = None
+        until = EXHAUSTED.get(self.config.label)
+        if until and time.time() < until:
+            raise LimitReached(f"{self.config.label}: daily limit used up; resets in ~{(until - time.time()) / 3600:.1f} h")
         for attempt in range(1, self.max_attempts + 1):
             self.limiter.wait(estimate)
             start = time.monotonic()
@@ -334,7 +346,8 @@ class LangChainLLM:
                     # unattended runs that should simply wait for the provider's budget to refill.
                     patience = float(os.getenv("ADRD_MAX_RATE_WAIT_SECONDS", "600"))
                     if asked is not None and asked > patience:
-                        break
+                        EXHAUSTED[self.config.label] = time.time() + asked
+                        raise LimitReached(f"{self.config.label}: limit reached; resets in ~{asked / 3600:.1f} h ({e})") from e
                     time.sleep(asked + 1 if asked is not None else 15 * attempt)
                 else:
                     which += 1
@@ -388,8 +401,42 @@ class FakeLLM:
         return LLMResult(parsed, Usage(role=role, model=self.config.label, input_tokens=tokens_in, output_tokens=50))
 
 
+KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "openrouter": "OPENROUTER_API_KEY",
+           "groq": "GROQ_API_KEY", "nvidia": "NVIDIA_API_KEY", "mistral": "MISTRAL_API_KEY"}
+
+
+class _CacheOnlyLLM:
+    """Answers from the response cache when it can (earlier runs made with the key); otherwise delegates."""
+
+    def __init__(self, config: ModelConfig, cache: "ResponseCache", namespace: str, fallback):
+        self.config, self.cache, self.namespace, self.fallback = config, cache, namespace, fallback
+
+    def structured(self, schema, system, user, role):
+        hit = self.cache.get(ResponseCache.key(self.config, schema, system, user, self.namespace))
+        if hit is not None:
+            usage = Usage.model_validate(hit["usage"])
+            usage.role, usage.cached, usage.seconds = role, True, 0.0
+            return LLMResult(schema.model_validate(hit["parsed"]), usage)
+        return self.fallback.structured(schema, system, user, role)
+
+
+class MissingKeyLLM:
+    """Stands in for a model whose API key is not set yet. Every call fails with LimitReached, so only the
+    articles that need this model wait; the rest of the run goes ahead, and a re-run with the key resumes."""
+
+    def __init__(self, config: ModelConfig, env: str):
+        self.config, self.env = config, env
+
+    def structured(self, schema, system, user, role):
+        raise LimitReached(f"{self.config.label}: no {self.env} in .env yet; this step waits for it")
+
+
 def build_llm(config: ModelConfig, cache_dir: str | Path | None = None, codebook=None, namespace: str = "") -> LLM:
     """`namespace` separates cache entries, e.g. per repeat, so repeats call the model again."""
+    env = KEY_ENV.get(config.provider)
+    if env and not os.getenv(env) and not config.extra.get("api_key"):
+        cache = ResponseCache(cache_dir)
+        return _CacheOnlyLLM(config, cache, namespace, MissingKeyLLM(config, env))
     if config.provider == "fake":
         from adrd_review.fake_model import default_responders
 

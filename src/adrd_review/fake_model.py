@@ -29,6 +29,10 @@ from adrd_review.schemas import (
     ExtractionRecord,
     InclusionCheck,
     ScreeningAnswer,
+    ScreeningBatchAnswer,
+    ScreeningBatchItem,
+    TitleBatchAnswer,
+    TitleHit,
     TriageReport,
 )
 
@@ -85,7 +89,32 @@ def default_responders(codebook=None, style: str = "keyword-rules") -> dict:
     dims = list(codebook.dimensions) if codebook is not None else ["instrument", "setting"]
     generic = codebook is not None and any(r.keywords for r in codebook.screening.inclusion)
     topic = _generic_responders(codebook, style) if generic else _builtin_responders(dims, style)
-    return topic | _shared_responders()
+    return topic | _shared_responders() | _batch_responders(topic[ScreeningAnswer])
+
+
+def _batch_responders(single) -> dict:
+    """Batch calls answered by running the single-article stand-in on each article in turn."""
+
+    def titles(_schema, system, user):
+        hits = []
+        for line in user.split("\n")[1:]:
+            m = re.match(r"(\d+)\. (.*)", line)
+            if not m:
+                continue
+            ans = single(ScreeningAnswer, system, f"ARTICLE\nTitle: {m.group(2)}")
+            for c in [*ans.inclusion, *ans.exclusion]:
+                if c.status in ("not_met", "applies") and c.quote:
+                    hits.append(TitleHit(n=int(m.group(1)), rule_id=c.rule_id, quote=c.quote))
+        return TitleBatchAnswer(excluded=hits)
+
+    def abstracts(_schema, system, user):
+        items = []
+        for m in re.finditer(r"=== ARTICLE (\d+) ===\n(.*?)(?=\n\n=== ARTICLE \d+ ===|\Z)", user, re.S):
+            ans = single(ScreeningAnswer, system, m.group(2))
+            items.append(ScreeningBatchItem(n=int(m.group(1)), **ans.model_dump()))
+        return ScreeningBatchAnswer(items=items)
+
+    return {TitleBatchAnswer: titles, ScreeningBatchAnswer: abstracts}
 
 
 def _generic_responders(codebook, style: str) -> dict:

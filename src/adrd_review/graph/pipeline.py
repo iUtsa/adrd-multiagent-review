@@ -75,6 +75,16 @@ class Reviewer:
     annotation_llm: LLM  # annotation (and annotation debate)
     persona: str | None = None
     weight: float = 1.0
+    title_llm: LLM | None = None  # title stage (default: llm)
+    eligibility_llm: LLM | None = None  # full-text stage, which needs a model with room for a whole paper (default: llm)
+
+    @property
+    def for_title(self) -> LLM:
+        return self.title_llm or self.llm
+
+    @property
+    def for_eligibility(self) -> LLM:
+        return self.eligibility_llm or self.llm
 
 
 @dataclass
@@ -88,6 +98,8 @@ class PipelineOptions:
     fields_debated: list[str] = field(default_factory=list)  # empty = all fields
     # Stage 0: title-only screening before the abstract (removes only the obviously off-topic)
     title_stage: bool = False
+    # Triage only decides whether to add a full-text excerpt at abstract stage; off saves a call per article
+    triage: bool = True
     # Extraction + annotation of included articles (off = screening only: a counts-only run)
     annotate: bool = True
     # Stage 1 extra: show a PubMed Central excerpt at abstract screening
@@ -142,11 +154,18 @@ def build_pipeline(
     def route_start(state: ArticleState):
         if not opt.title_stage:
             return "triage"
-        return [Send("title_reviewer", {"article": state["article"], "reviewer_id": r.id}) for r in reviewers]
+        return [Send("title_reviewer", {"article": state["article"], "reviewer_id": r.id,
+                                        "prepared": state.get("prepared")}) for r in reviewers]
+
+    def prepared_vote(payload: dict, field_name: str):
+        """A vote already made in a batch call by the runner (its cost is in the article's usage)."""
+        return ((payload.get("prepared") or {}).get(field_name) or {}).get(payload["reviewer_id"])
 
     def title_reviewer(payload: dict) -> dict:
+        if (vote := prepared_vote(payload, "title")) is not None:
+            return {"title_votes": [vote]}
         r = by_id[payload["reviewer_id"]]
-        vote, usage = title_screening.run(payload["article"], codebook, r.llm, reviewer_id=r.id, persona=r.persona)
+        vote, usage = title_screening.run(payload["article"], codebook, r.for_title, reviewer_id=r.id, persona=r.persona)
         return {"title_votes": [vote], "usage": [usage]}
 
     def title_consensus(state: ArticleState) -> dict:
@@ -165,13 +184,15 @@ def build_pipeline(
     # ---- triage and stage 1: title/abstract screening ------------------------------
 
     def triage_node(state: ArticleState) -> dict:
+        if not opt.triage:
+            return {}
         report, usage = triage.run(state["article"], codebook, triage_llm)
         return {"triage": report, "usage": [usage]}
 
     def fulltext_node(state: ArticleState) -> dict:
         art = state["article"]
         wanted = opt.fulltext == "always" or (
-            opt.fulltext == "when_needed" and not state["triage"].enough_information
+            opt.fulltext == "when_needed" and state.get("triage") is not None and not state["triage"].enough_information
         )
         if not wanted:
             return {"fulltext_info": {"used": False, "reason": "not needed" if opt.fulltext != "never" else "off"}}
@@ -192,9 +213,12 @@ def build_pipeline(
         }
 
     def fan_out_screening(state: ArticleState) -> list[Send]:
-        return [Send("screen_reviewer", {"article": state["article"], "reviewer_id": r.id}) for r in reviewers]
+        return [Send("screen_reviewer", {"article": state["article"], "reviewer_id": r.id,
+                                         "prepared": state.get("prepared")}) for r in reviewers]
 
     def screen_reviewer(payload: dict) -> dict:
+        if (vote := prepared_vote(payload, "screening")) is not None:
+            return {"screening_votes": [vote]}
         r = by_id[payload["reviewer_id"]]
         vote, usage = screening.run(payload["article"], codebook, r.llm, reviewer_id=r.id, persona=r.persona)
         return {"screening_votes": [vote], "usage": [usage]}
@@ -266,7 +290,7 @@ def build_pipeline(
 
     def elig_reviewer(payload: dict) -> dict:
         r = by_id[payload["reviewer_id"]]
-        vote, usage = eligibility.run(payload["article"], codebook, r.llm, reviewer_id=r.id, persona=r.persona)
+        vote, usage = eligibility.run(payload["article"], codebook, r.for_eligibility, reviewer_id=r.id, persona=r.persona)
         return {"eligibility_votes": [vote], "usage": [usage]}
 
     def elig_consensus(state: ArticleState) -> dict:
@@ -281,7 +305,7 @@ def build_pipeline(
         return "elig_checks"
 
     def elig_debate(state: ArticleState) -> dict:
-        new, usages = debate_round(state, "eligibility", "eligibility_votes", lambda r: r.llm)
+        new, usages = debate_round(state, "eligibility", "eligibility_votes", lambda r: r.for_eligibility)
         return {"eligibility_votes": new, "eligibility_round": state.get("eligibility_round", 0) + 1, "usage": usages}
 
     def elig_adjudicate(state: ArticleState) -> dict:

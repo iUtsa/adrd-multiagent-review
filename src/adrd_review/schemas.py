@@ -98,6 +98,30 @@ class ScreeningAnswer(BaseModel):
     confidence: float = Field(ge=0, le=1, description="How sure you are of your rule judgments overall, 0 to 1.")
 
 
+class TitleHit(BaseModel):
+    n: int = Field(description="The number of the title in the list.")
+    rule_id: str = Field(description="The inclusion rule clearly not met, or the exclusion rule that clearly applies.")
+    quote: str = Field(description="The exact words from THAT title that show it.")
+
+
+class TitleBatchAnswer(BaseModel):
+    """Batch title screening: only titles that are clearly off topic are reported; all others are kept."""
+
+    excluded: list[TitleHit] = Field(
+        default_factory=list, description="One entry per (title, rule) that is clearly violated. Leave out every title that might be relevant."
+    )
+
+
+class ScreeningBatchItem(ScreeningAnswer):
+    n: int = Field(description="The number of the article this entry is about.")
+
+
+class ScreeningBatchAnswer(BaseModel):
+    """Batch abstract screening: one ScreeningAnswer per numbered article."""
+
+    items: list[ScreeningBatchItem] = Field(description="Exactly one entry per article, in order, each with its number.")
+
+
 class ExtractedField(BaseModel):
     value: str | None = Field(default=None, description="Short answer, or null if the text does not say.")
     quote: str | None = Field(default=None, description="Exact words the value comes from, or null.")
@@ -172,6 +196,7 @@ class Usage(BaseModel):
     seconds: float = 0.0
     cached: bool = False  # answered from our response cache (no call made)
     prompt_cache_read_tokens: int = 0  # input tokens billed at the provider's cheaper cache rate
+    batch_size: int = 1  # >1: this is one article's share of a batch call judging that many articles
 
 
 # --------------------------------------------------------------------------- #

@@ -31,6 +31,7 @@ python -m pytest                           # run the tests
 python scripts/score_baselines.py          # score the non-AI baselines
 python -m adrd_review.graph.runner configs/runs/E4_fake.yaml   # run the full proposed system (no key needed)
 python -m adrd_review.graph.runner configs/runs/PROF_search_fake.yaml   # professor's 1,855 papers, 3 stages, counts per stage
+scripts/run_until_done.sh configs/runs/PROF_search_free.yaml            # the same on free model tiers (slow; docs/FREE_MODELS.md)
 ```
 
 ## Docs

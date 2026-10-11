@@ -1,0 +1,68 @@
+# PROF_search_free: the professor's 1,855 search results through title, abstract and full-text screening
+# using FREE model tiers only (Utsa, 2026-10-11). Slow by design: free tiers cap calls and tokens per day,
+# so run it with scripts/run_until_done.sh, which re-runs (from the cache) until every article is done.
+#   python -m adrd_review.preflight configs/runs/PROF_search_free.yaml
+#   scripts/run_until_done.sh configs/runs/PROF_search_free.yaml
+# Full plan, limits and keys: docs/FREE_MODELS.md
+#
+# Each reviewer keeps the same models for the whole run (consistent panel), with one model per stage:
+#   titles + abstracts  Groq (key in .env): 3 different open models; batched (50 titles, 4 abstracts per call)
+#   full papers         need a large context: NVIDIA NIM (reviewer A) and OpenRouter free models (B, C).
+#                       Until NVIDIA_API_KEY / OPENROUTER_API_KEY are in .env, articles reaching full text wait.
+# No adjudicator (saves free calls): split votes go to the weighted majority and are flagged.
+# Verifier: quote check only (no model call).
+name: PROF_search_free
+condition: E2
+description: "Professor's 1,855 search results - three stages on free model tiers (counts only, no gold)"
+codebook: configs/codebook_aiml.yaml
+gold: null
+pmids_file: data/search/prof_query_pmids.txt
+corpus_dir: data/corpus_search
+part: all
+concurrency: 3
+
+# Not called in this run (triage: false, annotate: false) but required by the config format.
+roles:
+  triage:     {model: {provider: groq, model: qwen/qwen3.8-27b, structured_method: json_schema}}
+  extraction: {model: {provider: groq, model: qwen/qwen3.8-27b, structured_method: json_schema}}
+
+groq_limits: &groq {requests_per_minute: 25, tokens_per_minute: 8000, requests_per_day: 1000, tokens_per_day: 200000}
+
+panel:
+  - id: A
+    persona: >-
+      a clinical neurologist who diagnoses dementia. You pay closest attention to whether the condition
+      studied really is dementia or Alzheimer's disease (MCI only together with it), and whether the
+      participants are older adults.
+    title_model: {provider: groq, model: openai/gpt-oss-120b, max_tokens: 4096, extra: {reasoning_effort: low}, <<: *groq}
+    model:       {provider: groq, model: openai/gpt-oss-120b, max_tokens: 6000, extra: {reasoning_effort: medium}, <<: *groq}
+    eligibility_model: {provider: nvidia, model: nvidia/nemotron-3-super-120b-a12b, max_tokens: 4096, requests_per_minute: 30}
+  - id: B
+    persona: >-
+      a machine-learning researcher. You pay closest attention to whether the study really develops or
+      applies an AI or machine-learning method (logistic regression counts), and whether it is used to
+      detect, diagnose, monitor or predict the condition.
+    title_model: {provider: groq, model: qwen/qwen3.8-27b, max_tokens: 4096, structured_method: json_schema, <<: *groq}
+    model:       {provider: groq, model: qwen/qwen3.8-27b, max_tokens: 6000, structured_method: json_schema, <<: *groq}
+    eligibility_model: {provider: openrouter, model: "google/gemma-4-31b-it:free", max_tokens: 4096, requests_per_minute: 15}
+  - id: C
+    persona: >-
+      a research methodologist. You pay closest attention to whether the article is an original study
+      with human participants (not a review, not an abstract only), and to its design and data source.
+    title_model: {provider: groq, model: openai/gpt-oss-20b, max_tokens: 4096, extra: {reasoning_effort: low}, <<: *groq}
+    model:       {provider: groq, model: openai/gpt-oss-20b, max_tokens: 6000, extra: {reasoning_effort: medium}, <<: *groq}
+    eligibility_model: {provider: openrouter, model: "thinkingmachines/inkling:free", max_tokens: 4096, requests_per_minute: 15}
+
+verifier:
+  enabled: true        # quote check only
+human: none
+
+title_stage: true
+title_batch: 50
+abstract_batch: 4
+triage: false
+eligibility: fulltext
+eligibility_max_chars: 60000
+annotate: false
+missing_fulltext: not_retrieved
+pdf_dir: data/pdfs
