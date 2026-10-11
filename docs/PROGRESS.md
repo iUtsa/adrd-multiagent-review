@@ -32,6 +32,12 @@ Decision (Utsa): use free model APIs (OpenRouter, Groq and others), even if slow
 - **One batch of 50 titles:** Qwen excluded 3, all correct. The two gpt-oss models excluded about half, for not *mentioning* dementia or AI. Unanimity is required, so the panel excluded only those 3. The instructions were tightened.
 - **One batch of 5 abstracts:** the three models agreed (Parkinson's and MCI-only studies excluded). gpt-oss uses "medium" reasoning for abstracts.
 
+**Title stage finished 2026-10-11 (first real stage on the professor's corpus, free Groq panel, ~45 min):**
+- **1,855 titles screened, 253 excluded, 1,602 passed;** no batch deferred.
+- Reasons: I1 not dementia/Alzheimer's 170, E1 review 47, I2 no AI/ML 22, E3 no original results 8, I3 3, E4 not human 2, I4 1.
+- Each reviewer alone would have excluded: A (gpt-oss-120b) 711, B (Qwen) 318, C (gpt-oss-20b) 847. The every-reviewer-must-agree rule keeps only the clear cases.
+- A sample of 15 exclusions read by hand: mostly clearly off topic (hormone therapy, COVID mortality, a neuroimaging toolbox, urinary infections). There are borderline ones to review with the professor: Creutzfeldt-Jakob disease (a rapidly progressive dementia), MCI-only titles (excluded under her "MCI alone does not count" rule, although the abstract might add Alzheimer's), and a neurodegeneration-spread model.
+
 **Running since 2026-10-11 08:42** (`PROF_search_free`, unattended):
 - **Titles:** about 1 day.
 - **Abstracts:** about 2 weeks at Groq's 200,000 tokens/day per model.
