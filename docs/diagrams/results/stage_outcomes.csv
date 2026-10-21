@@ -1,0 +1,10 @@
+stage,outcome,papers
+Titles,Passed,1602
+Titles,Excluded,253
+Abstracts,Passed,1188
+Abstracts,Excluded,414
+Abstracts,Still open,0
+Full text (free),Included,498
+Full text (free),Excluded,30
+Full text (free),For the professor,120
+Full text (free),Retry,24

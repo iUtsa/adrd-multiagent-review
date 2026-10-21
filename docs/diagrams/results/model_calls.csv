@@ -1,0 +1,14 @@
+stage,model,answers
+Titles,groq:openai/gpt-oss-120b,1831
+Titles,groq:qwen/qwen3.8-27b,1831
+Titles,groq:openai/gpt-oss-20b,1831
+Abstracts,groq:qwen/qwen3.8-27b,1438
+Abstracts,groq:openai/gpt-oss-20b,957
+Abstracts,groq:openai/gpt-oss-120b,881
+Abstracts,openrouter:openai/gpt-oss-120b,697
+Abstracts,openrouter:openai/gpt-oss-20b,621
+Abstracts,openrouter:qwen/qwen3.8-27b,140
+Full text,nvidia:nvidia/nemotron-3-ultra-550b-a55b,648
+Full text,openrouter:dots-studio/dots-3-note-preview:free,648
+Full text,nvidia:google/gemma-4-31b-it,348
+Full text,openrouter:google/gemma-4-31b-it,300

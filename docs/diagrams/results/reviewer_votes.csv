@@ -1,0 +1,10 @@
+stage,reviewer,votes,count,pct
+Titles: voted exclude,A,1855,711,38.3
+Titles: voted exclude,B,1855,318,17.1
+Titles: voted exclude,C,1855,847,45.7
+Abstracts: voted exclude,A,1602,288,18.0
+Abstracts: voted exclude,B,1602,466,29.1
+Abstracts: voted exclude,C,1602,441,27.5
+Full text: voted unclear,A,648,129,19.9
+Full text: voted unclear,B,648,116,17.9
+Full text: voted unclear,C,648,114,17.6

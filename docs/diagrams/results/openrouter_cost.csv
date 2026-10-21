@@ -1,0 +1,5 @@
+model,usd
+openrouter:google/gemma-4-31b-it,0.7134
+openrouter:openai/gpt-oss-120b,0.3413
+openrouter:qwen/qwen3.8-27b,0.2117
+openrouter:openai/gpt-oss-20b,0.0503

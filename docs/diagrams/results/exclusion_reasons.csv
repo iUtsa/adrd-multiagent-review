@@ -1,0 +1,25 @@
+stage,rule,excluded
+Titles,I1 Target condition is dementia or Alzheimer's disease,170
+Titles,I2 Uses AI or machine learning,22
+Titles,"I3 Detection, diagnosis, monitoring or prediction",3
+Titles,I4 Older adults (60 or over),1
+Titles,E1 Review,47
+Titles,E2 Abstract only,0
+Titles,E3 No original results,8
+Titles,E4 Not human participants,2
+Abstracts,I1 Target condition is dementia or Alzheimer's disease,204
+Abstracts,I2 Uses AI or machine learning,36
+Abstracts,"I3 Detection, diagnosis, monitoring or prediction",132
+Abstracts,I4 Older adults (60 or over),19
+Abstracts,E1 Review,15
+Abstracts,E2 Abstract only,0
+Abstracts,E3 No original results,5
+Abstracts,E4 Not human participants,3
+Full text (free),I1 Target condition is dementia or Alzheimer's disease,8
+Full text (free),I2 Uses AI or machine learning,4
+Full text (free),"I3 Detection, diagnosis, monitoring or prediction",7
+Full text (free),I4 Older adults (60 or over),6
+Full text (free),E1 Review,2
+Full text (free),E2 Abstract only,0
+Full text (free),E3 No original results,2
+Full text (free),E4 Not human participants,1
