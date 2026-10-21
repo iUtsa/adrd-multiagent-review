@@ -24,7 +24,11 @@ Not counted: 163 free copies still to save by hand; 310 paid access only. For th
 
 **Final (with the third look):** titles 1,855 → 1,602; abstracts → 1,182 (420 excluded); free full text 709 → **408 included**, 143 excluded, **152 for the professor** (94 do not report age, 53 cannot be confirmed 65+, 5 other rules), 6 not finished. Three per-stage CSVs (`final/stage1_titles.csv`, `stage2_abstracts.csv`, `stage3_fulltext.csv`) list every paper at each stage with its decision, reason and quotes.
 
-**Tests: 158 pass.**
+**Reliability and accuracy** (`eval/accuracy.py` → `final/accuracy.json`): Fleiss κ among A, B, C: titles 0.40 (fair, all three agree 60%), abstracts 0.55 (moderate, 75%), full text 0.42 (moderate, 67%; A-C κ 0.69, B with either ≈0.27-0.30). 78% of the quotes the reviewers gave were verbatim; the other 22% were discarded (rule counted unclear). Accuracy against human decisions exists only on the CLEF calibration set (recall 0.77, precision 0.77, κ 0.66; context only). Accuracy on this search: the professor's blind random check, scored by `python -m adrd_review.eval.accuracy <run> --check <filled xlsx>` (accuracy, sensitivity, specificity, precision, NPV, κ, 95% Wilson intervals).
+
+**Simple package** (`scripts/make_report.py`): 1_Report.pdf, 2-4 stage CSVs, 5_For_Your_Decision.csv, 6_Random_Check.xlsx; answer key in send_later/; everything else in extras/.
+
+**Tests: 159 pass.**
 
 ---
 
