@@ -1,0 +1,38 @@
+flowchart LR
+    classDef used fill:#e3eefc,stroke:#2a78d6,color:#0b0b0b
+    classDef warn fill:#fde6dc,stroke:#eb6834,color:#0b0b0b
+    classDef store fill:#fcfcfb,stroke:#52514e,color:#0b0b0b
+
+    subgraph LOOP["Between tries: scripts/run_until_done.sh"]
+        direction TB
+        L(["start<br/>caffeinate -s / -i keeps the Mac awake<br/>(not when the lid is closed)"]):::used
+        TRY["try N<br/>python -m adrd_review.graph.runner<br/>6 papers at a time"]:::used
+        W[("write run folder<br/>decisions · in_progress · stages<br/>report · flow")]:::store
+        Q{"papers<br/>still open?"}:::used
+        DONE(["COMPLETE"]):::used
+        L --> TRY --> W --> Q
+        Q -->|"yes: sleep 1 h"| TRY
+        Q -->|no| DONE
+    end
+
+    subgraph CALL["Inside a try: every model call"]
+        direction TB
+        C{"asked before?"}:::used
+        CACHE[("response cache<br/>data/cache/llm<br/>one file per request")]:::store
+        LIM{"primary host's<br/>per-minute budget"}:::used
+        HOST["primary host"]:::used
+        OVF["overflow host<br/>(same model)"]:::used
+        EXH["LimitReached<br/>model marked used up until its reset time<br/>(read from the error), papers skipped at once"]:::warn
+        FAIL["paper stays open<br/>failures.json + in_progress.jsonl<br/>retried next try"]:::warn
+        C -->|yes| CACHE
+        C -->|no| LIM
+        LIM -->|free| HOST
+        LIM -->|"busy, or wait > 20 s"| OVF
+        HOST -->|"answer"| CACHE
+        OVF -->|"answer"| CACHE
+        HOST -->|"daily limit used up"| OVF
+        HOST -->|"error after 5 attempts"| OVF
+        OVF -->|"fails too, or no overflow host"| EXH --> FAIL
+    end
+
+    TRY -.-> C

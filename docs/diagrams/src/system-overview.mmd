@@ -1,0 +1,61 @@
+flowchart TB
+    classDef used fill:#e3eefc,stroke:#2a78d6,color:#0b0b0b
+    classDef off fill:#f0efec,stroke:#a3a29c,stroke-dasharray:4 3,color:#52514e
+    classDef prof fill:#d9f3e9,stroke:#1baf7a,color:#0b0b0b
+    classDef out fill:#fde6dc,stroke:#eb6834,color:#0b0b0b
+    classDef store fill:#fcfcfb,stroke:#52514e,color:#0b0b0b
+
+    subgraph P0["0 · Protocol (versioned files)"]
+        CB[("codebook_aiml.yaml v0.3.0<br/>rules I1-I4 inclusion, E1-E4 exclusion<br/>professor's answers 2026-10-07/08")]:::store
+        CFG[("run config PROF_search_free.yaml<br/>panel, models, hosts, limits")]:::store
+        CUR["Codebook Curator<br/>(built; calibration only)"]:::off
+    end
+
+    subgraph P1["1 · Ingestion"]
+        Q["PubMed search<br/>professor's query"]:::used --> CORP[("1,855 records<br/>data/corpus_search")]:::store
+    end
+
+    subgraph S1["2 · Title screening"]
+        T["3 reviewers read the TITLE only<br/>batches of 50 · Groq free"]:::used
+        TC{"excluded only if<br/>ALL 3 exclude"}:::used
+        T --> TC
+    end
+
+    subgraph S2["3 · Abstract screening"]
+        A["3 reviewers read title + abstract<br/>batches of 4 · Groq free,<br/>same model on OpenRouter when Groq is busy"]:::used
+        AC{"majority 2 of 3<br/>tie = include"}:::used
+        A --> AC
+    end
+
+    subgraph S3["4 · Full text (free full text only)"]
+        FT["full-text tool<br/>PubMed Central / free open-access copy"]:::used
+        E["3 reviewers read the whole paper<br/>A Nemotron 3 Ultra · B Gemma 4 31B · C dots.3"]:::used
+        EC{"majority 2 of 3<br/>include / exclude / unclear"}:::used
+        FT -->|free copy found| E --> EC
+    end
+
+    V["Verifier<br/>every quote must be in the text"]:::used
+    SL["Second look<br/>GLM-5.3 re-reads 'unclear' papers<br/>same rules + quote check"]:::used
+    PROF(["Professor<br/>blind check · remaining unclear"]):::prof
+
+    INC[("Included")]:::store
+    EXC[("Excluded<br/>with rule + quote")]:::out
+    PAID["Paid access only<br/>not assessed, not counted<br/>(side note)"]:::off
+    OUT[("Run folder<br/>decisions.jsonl · in_progress.jsonl<br/>stages/ CSV + stages.xlsx · report.json<br/>flow.png · second_look.csv")]:::store
+
+    CORP --> T
+    TC -->|kept by 1-3| A
+    TC -->|all exclude| EXC
+    AC -->|include| FT
+    AC -->|exclude| EXC
+    AC -. "2-1 exclusions flagged" .-> PROF
+    FT -->|no free copy| PAID
+    EC -->|include| INC
+    EC -->|exclude| EXC
+    EC -->|unclear| SL
+    SL -->|include| INC
+    SL -->|exclude| EXC
+    SL -->|still unclear| PROF
+    T & A & E -.- V
+    CB -.-> T & A & E & SL
+    INC & EXC & PROF --> OUT

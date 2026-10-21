@@ -1,0 +1,26 @@
+flowchart TB
+    classDef used fill:#e3eefc,stroke:#2a78d6,color:#0b0b0b
+    classDef off fill:#f0efec,stroke:#a3a29c,stroke-dasharray:4 3,color:#52514e
+    classDef prof fill:#d9f3e9,stroke:#1baf7a,color:#0b0b0b
+    classDef out fill:#fde6dc,stroke:#eb6834,color:#0b0b0b
+
+    START([run_until_done.sh starts a try]):::used --> PB["prepare_batches<br/>title batches of 50 · abstract batches of 4<br/>cached answers reused · used-up limits deferred"]:::used
+    PB --> TR["title_reviewer ×3<br/>(answer taken from the batch)"]:::used --> TCN["title_consensus"]:::used
+    TCN -->|all 3 exclude| FIN["finalize"]:::out
+    TCN -->|kept| TRI["triage"]:::off --> FTA["fulltext (stage 1)"]:::off --> SR["screen_reviewer ×3<br/>(answer taken from the batch)"]:::used
+    SR --> SC["screen_consensus<br/>weighted majority"]:::used
+    SC -. split .-> SD["screen_debate"]:::off
+    SC -. split .-> SA["screen_adjudicate"]:::off
+    SC --> SCH["screen_checks<br/>verifier quote check ·<br/>flag 2-1 exclusions"]:::used
+    SCH -->|exclude| FIN
+    SCH -->|include| GF["get_fulltext<br/>PMC / free copy / data/pdfs"]:::used
+    GF -->|no free copy| NR["elig_checks: not_retrieved<br/>(paid access, not counted)"]:::off --> FIN
+    GF -->|found| ER["elig_reviewer ×3 (Send fan-out)<br/>whole paper, ≤ 60,000 chars"]:::used
+    ER --> EC["elig_consensus<br/>include / exclude / unclear"]:::used
+    EC -. split .-> ED["elig_debate"]:::off
+    EC -. split .-> EA["elig_adjudicate"]:::off
+    EC --> ECH["elig_checks<br/>escalate unclear + 2-1 exclusions"]:::used
+    ECH --> FIN
+    ECH -. annotate: false .-> EX["extract + annotate ×3"]:::off
+    FIN --> SAVE["write outputs<br/>decisions · in_progress · stages · report"]:::used
+    SAVE --> SL["second_look (after the run)<br/>GLM-5.3 on 'unclear' papers"]:::used --> PROF(["professor"]):::prof

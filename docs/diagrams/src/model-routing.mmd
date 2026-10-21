@@ -1,0 +1,51 @@
+flowchart LR
+    classDef free fill:#e3eefc,stroke:#2a78d6,color:#0b0b0b
+    classDef paid fill:#fcfcfb,stroke:#2a78d6,stroke-width:2px,stroke-dasharray:6 3,color:#0b0b0b
+    classDef dead fill:#f0efec,stroke:#a3a29c,stroke-dasharray:4 3,color:#52514e
+    classDef rev fill:#fcfcfb,stroke:#0b0b0b,color:#0b0b0b
+
+    A(["Reviewer A<br/>neurologist"]):::rev
+    B(["Reviewer B<br/>ML researcher"]):::rev
+    C(["Reviewer C<br/>methodologist"]):::rev
+    S(["Second look"]):::rev
+
+    subgraph TA["Titles + abstracts"]
+        GA["Groq free<br/>gpt-oss-120b"]:::free
+        GB["Groq free<br/>qwen3.8-27b"]:::free
+        GC["Groq free<br/>gpt-oss-20b"]:::free
+        OA["OpenRouter paid<br/>gpt-oss-120b"]:::paid
+        OB["OpenRouter paid<br/>qwen3.8-27b"]:::paid
+        OC["OpenRouter paid<br/>gpt-oss-20b"]:::paid
+    end
+
+    subgraph FT["Full text"]
+        NA["NVIDIA free<br/>Nemotron 3 Ultra 550B"]:::free
+        NAx["NVIDIA<br/>Nemotron 3 Super · 404 from 2026-10-20<br/>its 175 answers not used:<br/>Ultra re-read all 648 papers"]:::dead
+        RB["OpenRouter paid<br/>Gemma 4 31B"]:::paid
+        NB["NVIDIA free<br/>Gemma 4 31B"]:::free
+        RBx["OpenRouter free pool<br/>Gemma 4 31B · always 429"]:::dead
+        RC["OpenRouter free<br/>dots.3 note preview<br/>(1,000/day after $10 credit)"]:::free
+        RCx["OpenRouter<br/>inkling:free · 403"]:::dead
+    end
+
+    subgraph SLK["Second look"]
+        OG["OpenRouter paid<br/>GLM-5.3"]:::paid
+        NG["NVIDIA free<br/>GLM-5.3"]:::free
+    end
+
+    A --> GA -. "daily / per-minute limit, or waits > 20 s" .-> OA
+    B --> GB -.-> OB
+    C --> GC -.-> OC
+    A --> NA
+    A -. "until 2026-10-20" .-> NAx
+    B --> RB -. "fails" .-> NB
+    B -. "2026-10-16/17" .-> RBx
+    C --> RC
+    C -. "2026-10-16" .-> RCx
+    S --> OG -. "fails" .-> NG
+
+    subgraph KEY["Key"]
+        K1["free tier"]:::free
+        K2["paid per token"]:::paid
+        K3["tried, no longer used"]:::dead
+    end

@@ -1,0 +1,43 @@
+flowchart LR
+    classDef used fill:#e3eefc,stroke:#2a78d6,color:#0b0b0b
+    classDef prof fill:#d9f3e9,stroke:#1baf7a,color:#0b0b0b
+    classDef out fill:#fde6dc,stroke:#eb6834,color:#0b0b0b
+    classDef note fill:#fcfcfb,stroke:#a3a29c,color:#52514e
+
+    subgraph ONE["One reviewer (same at every stage)"]
+        direction TB
+        R1["mark every rule<br/>I1-I4: met / not met / unclear<br/>E1-E4: applies / does not apply / unclear"]:::used
+        R2["'not met' / 'applies' needs a quote<br/>that the code finds in the text;<br/>no quote → unclear"]:::used
+        R1 --> R2
+    end
+
+    subgraph TT["Titles"]
+        direction TB
+        T1["vote exclude if a rule clearly fails<br/>(quote from the title)"]:::note
+        T2{"all 3 exclude?"}:::used
+        T1 --> T2
+        T2 -->|yes| TX["excluded"]:::out
+        T2 -->|"no (1 keeps it)"| TK["to abstracts"]:::used
+    end
+
+    subgraph AB["Abstracts"]
+        direction TB
+        A1["vote exclude if a rule clearly fails<br/>(quote from title/abstract)"]:::note
+        A2{"weighted majority"}:::used
+        A1 --> A2
+        A2 -->|"3-0 or 2-1 include, or tie"| AK["to full text"]:::used
+        A2 -->|"3-0 exclude"| AX["excluded"]:::out
+        A2 -->|"2-1 exclude"| AF["excluded + flagged<br/>for the professor's check"]:::out
+    end
+
+    subgraph FU["Full text"]
+        direction TB
+        F1["include only if ALL 4 inclusion rules met<br/>exclude if a rule clearly fails<br/>otherwise unclear"]:::note
+        F2{"majority over<br/>include / exclude / unclear"}:::used
+        F1 --> F2
+        F2 -->|include| FI["included"]:::used
+        F2 -->|exclude| FX["excluded<br/>(2-1 flagged)"]:::out
+        F2 -->|"unclear, or no majority"| FS["second look → professor"]:::prof
+    end
+
+    ONE --> TT --> AB --> FU

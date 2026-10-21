@@ -1,0 +1,24 @@
+gantt
+    title Free-tier run of the professor's 1,855 search results (2026)
+    dateFormat YYYY-MM-DD HH:mm
+    axisFormat %b %d
+    section Titles
+    Titles screened, Groq free (1,855 → 1,602)      :done, t1, 2026-10-11 08:42, 2026-10-11 10:46
+    section Abstracts
+    Groq free only, daily limits (~50 abstracts/day)  :done, a1, 2026-10-11 10:46, 2026-10-20 10:33
+    Same models on OpenRouter when Groq busy          :done, a2, 2026-10-20 10:33, 2026-10-20 13:35
+    section Full text
+    Keys added; C moved to dots.3                     :milestone, 2026-10-16 17:00, 0m
+    B Gemma moved to NVIDIA                           :milestone, 2026-10-17 15:30, 0m
+    Full text, limited by C's 50/day                  :done, f1, 2026-10-17 15:32, 2026-10-20 10:33
+    A moved to Nemotron 3 Ultra; $10 credit           :milestone, 2026-10-20 10:33, 0m
+    Full text of all free papers                      :done, f2, 2026-10-20 13:35, 2026-10-21 09:10
+    B Gemma on OpenRouter paid                        :milestone, 2026-10-21 07:21, 0m
+    section Mac asleep (lid closed)
+    asleep                                            :crit, s1, 2026-10-16 19:00, 2026-10-17 10:59
+    asleep                                            :crit, s2, 2026-10-17 17:46, 2026-10-18 11:00
+    asleep                                            :crit, s3, 2026-10-18 14:44, 2026-10-19 13:00
+    asleep                                            :crit, s4, 2026-10-19 14:54, 2026-10-20 07:14
+    asleep                                            :crit, s5, 2026-10-20 15:12, 2026-10-21 07:14
+    section Checks
+    Second look, GLM-5.3                              :active, sl, 2026-10-21 09:30, 2026-10-21 11:00

@@ -1,0 +1,54 @@
+sequenceDiagram
+    autonumber
+    participant R as Runner (code)
+    participant A as Reviewer A
+    participant B as Reviewer B
+    participant C as Reviewer C
+    participant V as Verifier (code)
+    participant S as Second look
+    participant P as Professor
+
+    Note over R: Titles: batches of 50 titles, sent before the graph runs
+    par independent, blind
+        R->>A: 50 titles + codebook (persona: neurologist)
+        R->>B: 50 titles + codebook (persona: ML researcher)
+        R->>C: 50 titles + codebook (persona: methodologist)
+    end
+    A-->>R: per title: rule marks + quotes
+    B-->>R: per title: rule marks + quotes
+    C-->>R: per title: rule marks + quotes
+    R->>V: every quote must be in the title
+    Note over R: excluded only if all 3 exclude
+
+    Note over R: Abstracts: batches of 4 (Groq, OpenRouter when Groq is busy)
+    par independent, blind
+        R->>A: 4 abstracts
+        R->>B: 4 abstracts
+        R->>C: 4 abstracts
+    end
+    A-->>R: rule marks + quotes
+    B-->>R: rule marks + quotes
+    C-->>R: rule marks + quotes
+    R->>V: quotes checked, no quote means unclear
+    Note over R: weighted majority, 2-1 exclusions flagged
+
+    Note over R: Full text (free copies only), one paper per call
+    par independent, blind
+        R->>A: whole paper (Nemotron 3 Ultra)
+        R->>B: whole paper (Gemma 4 31B)
+        R->>C: whole paper (dots.3)
+    end
+    A-->>R: include / exclude / unclear + quotes
+    B-->>R: include / exclude / unclear + quotes
+    C-->>R: include / exclude / unclear + quotes
+    R->>V: quotes checked
+    Note over R: majority, unclear or no majority goes on
+
+    opt paper left unclear
+        R->>S: same paper + the rules the panel left open (not the votes)
+        S-->>R: include / exclude / unclear + quotes
+        opt still unclear
+            R->>P: paper, all votes, quotes, reasoning (stages.xlsx)
+            P-->>R: decision
+        end
+    end

@@ -1,0 +1,8 @@
+{"theme": "base", "themeVariables": {"fontFamily": "Helvetica, Arial, sans-serif", "fontSize": "15px",
+ "primaryColor": "#e3eefc", "primaryBorderColor": "#2a78d6", "primaryTextColor": "#0b0b0b",
+ "lineColor": "#52514e", "secondaryColor": "#f0efec", "tertiaryColor": "#fcfcfb",
+ "clusterBkg": "#f7f6f3", "clusterBorder": "#c9c8c2", "background": "#fcfcfb",
+ "actorBkg": "#e3eefc", "actorBorder": "#2a78d6", "noteBkgColor": "#f7f6f3", "noteBorderColor": "#c9c8c2",
+ "critBkgColor": "#fde6dc", "critBorderColor": "#eb6834", "doneTaskBkgColor": "#e3eefc", "doneTaskBorderColor": "#2a78d6",
+ "activeTaskBkgColor": "#d9f3e9", "activeTaskBorderColor": "#1baf7a"},
+ "flowchart": {"curve": "basis", "htmlLabels": true}, "gantt": {"barHeight": 24, "fontSize": 13, "sectionFontSize": 13}}

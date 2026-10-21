@@ -1,0 +1,19 @@
+flowchart LR
+    classDef done fill:#e3eefc,stroke:#2a78d6,color:#0b0b0b
+    classDef real fill:#2a78d6,stroke:#184f95,color:#ffffff
+    classDef todo fill:#fcfcfb,stroke:#a3a29c,stroke-dasharray:4 3,color:#52514e
+
+    E0["E0<br/>prior 2-agent system<br/>waiting for its outputs"]:::todo
+    E1["E1<br/>single reviewer<br/>built · tested"]:::done
+    E2["E2<br/>3-agent panel + vote<br/>built · run with Groq on 40<br/>calibration papers: recall 0.77, κ 0.66"]:::real
+    E3["E3<br/>+ adjudicator on splits<br/>built · tested"]:::done
+    E4["E4<br/>+ human on low confidence<br/>built · tested (review queue)"]:::done
+    D["D<br/>+ debate before adjudication<br/>built · tested"]:::done
+    TS["Three stages<br/>titles → abstracts → full text<br/>built 2026-10-03"]:::done
+    PROF["PROF_search_free<br/>E2 panel, three stages,<br/>1,855 papers, free tiers + $2.34<br/>done 2026-10-21"]:::real
+    SL["Second look<br/>GLM-5.3 on unclear papers<br/>2026-10-21"]:::real
+    CHK["Professor's blind check<br/>accuracy on this corpus<br/>next"]:::todo
+
+    E0 --> E1 --> E2 --> E3 --> E4
+    E3 -.-> D
+    E2 --> TS --> PROF --> SL --> CHK

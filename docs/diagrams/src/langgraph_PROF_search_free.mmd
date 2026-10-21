@@ -1,0 +1,78 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	title_reviewer(title_reviewer)
+	title_consensus(title_consensus)
+	triage(triage)
+	fulltext(fulltext)
+	screen_reviewer(screen_reviewer)
+	screen_consensus(screen_consensus)
+	screen_debate(screen_debate)
+	screen_adjudicate(screen_adjudicate)
+	screen_checks(screen_checks)
+	screen_human(screen_human)
+	get_fulltext(get_fulltext)
+	elig_reviewer(elig_reviewer)
+	elig_consensus(elig_consensus)
+	elig_debate(elig_debate)
+	elig_adjudicate(elig_adjudicate)
+	elig_checks(elig_checks)
+	elig_human(elig_human)
+	extract(extract)
+	annotate_reviewer(annotate_reviewer)
+	annotate_consensus(annotate_consensus)
+	annotate_debate(annotate_debate)
+	annotate_adjudicate(annotate_adjudicate)
+	finalize(finalize)
+	final_human(final_human)
+	__end__([<p>__end__</p>]):::last
+	__start__ -.-> title_reviewer;
+	__start__ -.-> triage;
+	annotate_adjudicate --> finalize;
+	annotate_consensus -.-> annotate_adjudicate;
+	annotate_consensus -.-> annotate_debate;
+	annotate_consensus -.-> finalize;
+	annotate_debate --> annotate_consensus;
+	annotate_reviewer --> annotate_consensus;
+	elig_adjudicate --> elig_checks;
+	elig_checks -.-> elig_human;
+	elig_checks -.-> extract;
+	elig_checks -.-> finalize;
+	elig_consensus -.-> elig_adjudicate;
+	elig_consensus -.-> elig_checks;
+	elig_consensus -.-> elig_debate;
+	elig_debate --> elig_consensus;
+	elig_human -.-> extract;
+	elig_human -.-> finalize;
+	elig_reviewer --> elig_consensus;
+	extract -.-> annotate_reviewer;
+	finalize -.-> __end__;
+	finalize -.-> final_human;
+	fulltext -.-> screen_reviewer;
+	get_fulltext -.-> elig_checks;
+	get_fulltext -.-> elig_reviewer;
+	screen_adjudicate --> screen_checks;
+	screen_checks -.-> extract;
+	screen_checks -.-> finalize;
+	screen_checks -.-> get_fulltext;
+	screen_checks -.-> screen_human;
+	screen_consensus -.-> screen_adjudicate;
+	screen_consensus -.-> screen_checks;
+	screen_consensus -.-> screen_debate;
+	screen_debate --> screen_consensus;
+	screen_human -.-> extract;
+	screen_human -.-> finalize;
+	screen_human -.-> get_fulltext;
+	screen_reviewer --> screen_consensus;
+	title_consensus -.-> finalize;
+	title_consensus -.-> triage;
+	title_reviewer --> title_consensus;
+	triage --> fulltext;
+	final_human --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
