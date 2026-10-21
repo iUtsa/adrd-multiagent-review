@@ -16,7 +16,7 @@ Everything here is generated, never drawn by hand, so it can be redrawn after an
 | [timeline.png](timeline.png) | the free run day by day: stages, model changes, nights the Mac slept | `src/timeline.mmd` |
 | [experiment-ladder.png](experiment-ladder.png) | conditions E0–E4, D, three stages, the professor's search, second look, with status | `src/experiment-ladder.mmd` |
 
-Colours (same meaning in every diagram and chart): blue = used / passed / included; grey dashed = built but off in this run, or tried and dropped, or not counted; orange = excluded; aqua = the professor. Dashed blue outline = a paid host.
+Colours (same meaning in every diagram and chart): blue = used / passed / included; grey dashed = built but off in this run, or tried and dropped, or not counted; orange = excluded; aqua = human review. Dashed blue outline = a paid host.
 
 Redraw one (Node is needed; the renderer is fetched on first use):
 
@@ -44,7 +44,7 @@ Made by `python -m adrd_review.eval.report_figures <run folder> --out docs/diagr
 
 | Chart | Shows |
 |---|---|
-| [stage_outcomes.png](results/stage_outcomes.png) | papers at each stage: passed / excluded / for the professor / retry |
+| [stage_outcomes.png](results/stage_outcomes.png) | papers at each stage: passed / excluded / for human review / retry |
 | [exclusion_reasons.png](results/exclusion_reasons.png) | the main rule behind each exclusion, per stage |
 | [how_decided.png](results/how_decided.png) | unanimous / majority / no majority, per stage |
 | [panel_agreement.png](results/panel_agreement.png) | Fleiss' κ and % unanimous among A, B, C, per stage |

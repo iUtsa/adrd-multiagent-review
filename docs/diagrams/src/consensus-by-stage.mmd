@@ -27,7 +27,7 @@ flowchart LR
         A1 --> A2
         A2 -->|"3-0 or 2-1 include, or tie"| AK["to full text"]:::used
         A2 -->|"3-0 exclude"| AX["excluded"]:::out
-        A2 -->|"2-1 exclude"| AF["excluded + flagged<br/>for the professor's check"]:::out
+        A2 -->|"2-1 exclude"| AF["excluded + flagged<br/>for human review"]:::out
     end
 
     subgraph FU["Full text"]
@@ -37,7 +37,7 @@ flowchart LR
         F1 --> F2
         F2 -->|include| FI["included"]:::used
         F2 -->|exclude| FX["excluded<br/>(2-1 flagged)"]:::out
-        F2 -->|"unclear, or no majority"| FS["second look → professor"]:::prof
+        F2 -->|"unclear, or no majority"| FS["second look → human review"]:::prof
     end
 
     ONE --> TT --> AB --> FU

@@ -18,7 +18,7 @@ After a run, on the papers whose full-text decision is "unclear" (same assignmen
 
 ## 4. Output
 
-The full-text reviewer's form (`ScreeningAnswer`): a mark per rule with quotes, rationale, confidence → `include` / `exclude` / `unclear` by the full-text decision rule. In `second_look.csv`: PMID, link, title, year, outcome (included / excluded / for the professor), open rules, the panel's votes, the second look's rule marks, quotes, reasoning, model.
+The full-text reviewer's form (`ScreeningAnswer`): a mark per rule with quotes, rationale, confidence → `include` / `exclude` / `unclear` by the full-text decision rule. In `second_look.csv`: PMID, link, title, year, outcome (included / excluded / for human review), open rules, the panel's votes, the second look's rule marks, quotes, reasoning, model.
 
 ## 5. Prompt
 
@@ -34,7 +34,7 @@ The same as every full-text reviewer: every quote is searched for in the paper; 
 
 ## 8. Failure handling
 
-A failed call leaves the paper "for the professor" with the error in the reasoning column; re-running is free for every paper already answered (cache).
+A failed call leaves the paper "for human review" with the error in the reasoning column; re-running is free for every paper already answered (cache).
 
 ## 9. Design decisions
 
