@@ -1,9 +1,18 @@
-"""Build the package for the professor from a run's final results (python -m adrd_review.final_results first).
+"""Build the simple package for the professor from a run's final results.
 
-    python scripts/make_report.py data/runs/PROF_search_free/<timestamp> [--out data/deliverables/<date>]
+    python -m adrd_review.final_results <run>        # first: final decisions, stage files, random check
+    python -m adrd_review.eval.accuracy <run>        # first: reliability (accuracy.json)
+    python scripts/make_report.py <run> --usd 10.03 [--out data/deliverables/<name>]
 
-Writes (git-ignored, under data/): report.html (self-contained), report.pdf (via headless Chrome), the final CSVs,
-the blind random-check workbook + answer key, the charts and the diagrams, and README.txt listing everything.
+Package (git-ignored, under data/deliverables/):
+    1_Report.pdf                 the report (also extras/report.html)
+    2_Stage1_Titles.csv          every record: title decision, reason, quotes
+    3_Stage2_Abstracts.csv       papers that passed titles: abstract decision, reason, quotes, abstract
+    4_Stage3_FullText.csv        papers that passed abstracts: included / excluded / for your decision / not assessed
+    5_For_Your_Decision.csv      papers the AI could not settle, with the reason
+    6_Random_Check.xlsx          blind random check (40 papers; AI answers hidden)
+    send_later/Random_Check_Answer_Key.csv   the AI's answers (send after the check)
+    extras/                      all decisions, counts, reliability, charts, diagrams, the HTML report
 """
 
 from __future__ import annotations
@@ -22,6 +31,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+
+def kappa_label(k: float) -> str:  # Landis & Koch
+    return ("poor" if k < 0 else "slight" if k <= 0.2 else "fair" if k <= 0.4 else "moderate" if k <= 0.6
+            else "substantial" if k <= 0.8 else "almost perfect")
 
 
 def img(path: Path, alt: str) -> str:
@@ -44,167 +58,162 @@ def main(argv: list[str]) -> int:
     run = Path(args.run_dir)
     fin = run / "final"
     s = json.loads((fin / "summary.json").read_text())
+    acc = json.loads((fin / "accuracy.json").read_text())
     out = Path(args.out or f"data/deliverables/{date.today().isoformat()}_ADRD_screening_results")
-    (out / "charts").mkdir(parents=True, exist_ok=True)
-    (out / "diagrams").mkdir(exist_ok=True)
+    if out.exists():
+        shutil.rmtree(out)
+    for sub in ("extras/charts", "extras/diagrams", "send_later"):
+        (out / sub).mkdir(parents=True, exist_ok=True)
 
-    for name in ("stage1_titles.csv", "stage2_abstracts.csv", "stage3_fulltext.csv", "decisions.csv", "for_professor.csv", "not_assessed.csv", "summary.json", "professor_check.csv",
-                 "professor_check_answer_key.csv", "professor_check.xlsx", "final_stages.png", "final_stages.csv",
-                 "final_reasons.png", "final_reasons.csv"):
-        dest = out / ("charts" if name.startswith("final_") else ".") / name
-        shutil.copy(fin / name, dest)
-    diag = ROOT / "docs/diagrams"
+    copies = {"stage1_titles.csv": "2_Stage1_Titles.csv", "stage2_abstracts.csv": "3_Stage2_Abstracts.csv",
+              "stage3_fulltext.csv": "4_Stage3_FullText.csv", "for_professor.csv": "5_For_Your_Decision.csv",
+              "professor_check.xlsx": "6_Random_Check.xlsx",
+              "professor_check_answer_key.csv": "send_later/Random_Check_Answer_Key.csv",
+              "professor_check.csv": "extras/random_check.csv", "decisions.csv": "extras/all_decisions.csv",
+              "not_assessed.csv": "extras/not_assessed.csv", "summary.json": "extras/summary.json",
+              "accuracy.json": "extras/reliability.json"}
+    for src, dst in copies.items():
+        shutil.copy(fin / src, out / dst)
+    for name in ("final_stages", "final_reasons"):
+        for ext in ("png", "csv"):
+            shutil.copy(fin / f"{name}.{ext}", out / "extras/charts" / f"{name}.{ext}")
+    for name in ("panel_agreement", "reviewer_votes", "model_calls", "progress"):
+        shutil.copy(ROOT / "docs/diagrams/results" / f"{name}.png", out / "extras/charts" / f"{name}.png")
     for name in ("system-overview", "consensus-by-stage", "pipeline-as-run", "model-routing", "agent-interaction-sequence",
-                 "run-loop", "timeline", "langgraph-full"):
-        shutil.copy(diag / f"{name}.png", out / "diagrams" / f"{name}.png")
-    for name in ("panel_agreement", "reviewer_votes", "how_decided", "model_calls", "progress"):
-        shutil.copy(diag / "results" / f"{name}.png", out / "charts" / f"{name}.png")
+                 "run-loop", "timeline"):
+        shutil.copy(ROOT / "docs/diagrams" / f"{name}.png", out / "extras/diagrams" / f"{name}.png")
 
     t, a, f, side = s["title"], s["abstract"], s["fulltext_free"], s["side_note"]
     reasons = s["exclusion_reasons"]
     rules = sorted({r for d in reasons.values() for r in d}, key=lambda r: (r[0] != "I", r))
     prof = s["for_the_professor_reasons"]
     age_prof = sum(v for k, v in prof.items() if "age" in k)
-    usd = args.usd
-    sl = list(csv.DictReader((run / "second_look.csv").open())) if (run / "second_look.csv").exists() else []
-    slc = Counter(r["second look"] for r in sl)
-    sl_inc, sl_exc, sl_total = slc.get("included", 0), slc.get("excluded", 0), len(sl)
-    sl_settled = sl_inc + sl_exc
-    tl = list(csv.DictReader((run / "third_look.csv").open())) if (run / "third_look.csv").exists() else []
-    tlc = Counter(r["third look"] for r in tl)
-    third_li = (f"<li><b>Third look:</b> the papers still unsettled were re-read by one more independent model "
-                f"(DeepSeek V4.1 Flash, a family used nowhere else); it settled {tlc.get('included', 0) + tlc.get('excluded', 0)} "
-                f"of {len(tl)} (included {tlc.get('included', 0)}, excluded {tlc.get('excluded', 0)}); "
-                f"{sum('failed' in r['why'] for r in tl)} could not be re-read because the paid credit ran out.</li>") if tl else ""
+    rel = acc["reliability"]
+    cal = acc["calibration_human_gold"]
+    g = rel["grounding"]
+
+    def looks(name: str, col: str) -> Counter:
+        p = run / name
+        return Counter(r[col] for r in csv.DictReader(p.open())) if p.exists() else Counter()
+
+    sl, tl = looks("second_look.csv", "second look"), looks("third_look.csv", "third look")
+    waiting = f["for the professor"] + f["not finished"]
 
     stage_rows = [["1. Titles", f"{t['screened']:,}", f"{t['excluded']:,}", f"{t['passed']:,}", "—"],
                   ["2. Abstracts", f"{a['screened']:,}", f"{a['excluded']:,}", f"{a['passed']:,}", "—"],
                   ["3. Full text (free)", f"{f['assessed']:,}", f"{f['excluded']:,}", f"<b>{f['included']:,}</b>",
-                   f"{f['for the professor']:,}" + (f" (+{f['not finished']} not finished)" if f["not finished"] else "")]]
-    reason_rows = [[html.escape(r), reasons["title"].get(r, 0), reasons["abstract"].get(r, 0), reasons["full text"].get(r, 0)]
-                   for r in rules] + [["<b>Total</b>", f"<b>{t['excluded']}</b>", f"<b>{a['excluded']}</b>", f"<b>{f['excluded']}</b>"]]
-    prof_rows = [[html.escape(k), v] for k, v in prof.items()]
+                   f"{waiting:,}"]]
+    reason_rows = [[html.escape(r), reasons["title"].get(r, 0), reasons["abstract"].get(r, 0),
+                    reasons["full text"].get(r, 0)] for r in rules]
+    reason_rows.append(["<b>Total</b>", f"<b>{t['excluded']}</b>", f"<b>{a['excluded']}</b>", f"<b>{f['excluded']}</b>"])
+    prof_rows = [[html.escape(k[0].upper() + k[1:]), v] for k, v in prof.items()]
+    if f["not finished"]:
+        prof_rows.append(["One AI reviewer's service could not read the paper", f["not finished"]])
+    rel_rows = [[name.capitalize(), f"{r['papers']:,}", f"{r['fleiss_kappa']:.2f} ({kappa_label(r['fleiss_kappa'])})",
+                 f"{r['all_three_agree']:.0%}"] for name, r in rel.items() if name != "grounding"]
 
     css = """
-    :root{--ink:#0b0b0b;--ink2:#52514e;--line:#e4e3df;--accent:#2a78d6;--bg:#fcfcfb}
-    body{font-family:-apple-system,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);max-width:960px;margin:32px auto;padding:0 16px;line-height:1.5;font-size:14px}
-    h1{font-size:24px;margin-bottom:4px} h2{font-size:18px;margin-top:32px;border-bottom:1px solid var(--line);padding-bottom:4px} h3{font-size:15px}
-    .sub{color:var(--ink2)} table{border-collapse:collapse;margin:12px 0;width:100%} th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
-    th{background:#f2f1ee} td:not(:first-child){font-variant-numeric:tabular-nums}
-    figure{margin:16px 0} img{max-width:100%;border:1px solid var(--line)} figcaption{color:var(--ink2);font-size:12px}
-    .box{border-left:4px solid var(--accent);background:#eef4fc;padding:10px 14px;margin:12px 0}
-    .warn{border-left-color:#eb6834;background:#fdf0ea} ul{padding-left:20px} code{font-size:12px}
-    @media print{body{margin:0;max-width:none} h2{break-after:avoid} figure,table{break-inside:avoid}}
+    body{font-family:-apple-system,Helvetica,Arial,sans-serif;color:#0b0b0b;background:#fcfcfb;max-width:900px;margin:32px auto;padding:0 16px;line-height:1.5;font-size:14px}
+    h1{font-size:23px;margin-bottom:2px} h2{font-size:17px;margin-top:30px;border-bottom:1px solid #e4e3df;padding-bottom:4px}
+    .sub{color:#52514e} table{border-collapse:collapse;margin:10px 0;width:100%} th,td{border:1px solid #e4e3df;padding:6px 8px;text-align:left;vertical-align:top}
+    th{background:#f2f1ee} figure{margin:14px 0} img{max-width:100%;border:1px solid #e4e3df} figcaption{color:#52514e;font-size:12px}
+    .box{border-left:4px solid #2a78d6;background:#eef4fc;padding:10px 14px;margin:12px 0} .warn{border-left-color:#eb6834;background:#fdf0ea}
+    ul{padding-left:20px} code{font-size:12px}
+    @media print{body{margin:0;max-width:none} h2{break-after:avoid} figure,table,.box{break-inside:avoid}}
     """
     doc = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ADRD AI/ML Screening Results</title><style>{css}</style></head><body>
-<h1>AI-assisted screening of the ADRD AI/ML search: results</h1>
-<p class="sub">Multi-agent review of the PubMed search ({t['screened']:,} records) · run completed {date.today().strftime('%B %d, %Y')} · prepared by Arnab Das Utsa</p>
+<h1>AI-assisted screening of the ADRD AI/ML search</h1>
+<p class="sub">{t['screened']:,} PubMed records · titles → abstracts → full text · {date.today().strftime('%B %d, %Y')} · Arnab Das Utsa</p>
 
-<div class="box"><b>In short.</b> Three independent AI reviewers screened all {t['screened']:,} records in three stages,
-as the human team does (titles → abstracts → full text), using your criteria. <b>{f['included']:,} papers are included</b>;
-<b>{f['for the professor']:,}</b> need your decision, almost all because the paper does not state the participants' age.
-Only papers with a free full text were assessed at the full-text stage.</div>
+<div class="box"><b>Result.</b> Of {t['screened']:,} records, <b>{f['included']:,} papers are included</b> and
+<b>{waiting:,} need your decision</b> ({age_prof:,} of them only because the paper does not state the participants'
+age). Criteria: yours, with older adults = 65 or over. Full texts: free copies only.</div>
 
 <h2>1. Papers at each stage</h2>
-{table(stage_rows, ["Stage", "In", "Excluded", "Passed / included", "For your decision"])}
-<p class="sub">Not counted above: {side['free_copy_to_save_by_hand']:,} papers that passed abstracts have a free copy that we
-still have to save by hand (the sites block automated download), and {side['paid_access_not_assessed']:,} are available
-only with a subscription, so their full text was not assessed.</p>
-{img(fin / 'final_stages.png', 'Papers at each stage (older adults 65+, free full text only)')}
+{table(stage_rows, ["Stage", "Screened", "Excluded", "Passed / included", "Your decision"])}
+<p class="sub">Not counted: {side['free_copy_to_save_by_hand']:,} free full texts still to be downloaded by hand and
+{side['paid_access_not_assessed']:,} subscription-only papers (not assessed).</p>
+{img(fin / 'final_stages.png', 'Papers at each stage')}
 
 <h2>2. Why papers were excluded</h2>
-<p>The main rule behind each exclusion (the rule cited by most of the reviewers who excluded it).</p>
-{table(reason_rows, ["Rule", "Titles", "Abstracts", "Full text"])}
-{img(fin / 'final_reasons.png', 'Main reason for each exclusion, by stage')}
+{table(reason_rows, ["Main reason", "Titles", "Abstracts", "Full text"])}
 
-<h2>3. Papers that need your decision ({f['for the professor']:,})</h2>
+<h2>3. Papers that need your decision</h2>
 {table(prof_rows, ["Why the AI could not decide", "Papers"])}
-<div class="box warn"><b>One decision settles {age_prof:,} of them:</b> if a paper does not report the participants'
-age (for example it uses ADNI or NACC data without an age table), should it count as 65+? If yes, about
-{f['included'] + age_prof:,} papers are included in total; if no, {f['included']:,}. The list, with the AI's reasoning,
-is in <code>for_professor.csv</code>.</div>
+<div class="box warn"><b>One question settles {age_prof:,} of them:</b> if a paper does not report age (e.g. ADNI or
+NACC data without an age table), should it count as 65+? Yes: about {f['included'] + age_prof:,} included in total;
+no: {f['included']:,}. List: <code>5_For_Your_Decision.csv</code>.</div>
 
-<h2>4. How the AI decided</h2>
+<h2>4. Reliability and accuracy</h2>
+<p><b>Agreement among the three AI reviewers</b> (independent votes, before any reconciliation):</p>
+{table(rel_rows, ["Stage", "Papers", "Fleiss' κ", "All three agree"])}
 <ul>
-<li><b>Three independent reviewers</b>, each a different AI model with a different perspective (clinical neurologist,
-machine-learning researcher, research methodologist). They never see each other's answers.</li>
-<li><b>Your criteria as rules:</b> I1 dementia or Alzheimer's (MCI only together with it), I2 AI or machine learning
-(logistic regression counts), I3 detection, diagnosis, monitoring or prediction, I4 older adults <b>65 or over</b>;
-excluded: E1 reviews, E2 abstract only (full proceedings papers count), E3 no original results, E4 not human
-participants (E3 and E4 are our proposals: please confirm).</li>
-<li><b>Every exclusion needs evidence:</b> a reviewer can only mark a rule as failed with an exact quote from the text,
-and the program checks every quote. Without a quote the rule counts as unclear, and unclear never excludes.</li>
-<li><b>Titles:</b> excluded only if all three reviewers exclude. <b>Abstracts:</b> majority of three (a 2-1 exclusion is
-flagged). <b>Full text:</b> included only when all four inclusion rules are clearly met; otherwise excluded (with a quote)
-or left for you.</li>
-<li><b>Second look:</b> every paper the panel could not settle was re-read by a fourth, independent model, looking for the
-missing evidence; it settled {sl_settled} of {sl_total} (included {sl_inc}, excluded {sl_exc}).</li>
-{third_li}
-<li><b>Age (65+):</b> applied at the abstract stage (excluded only when the abstract clearly shows participants under 65)
-and at full text (a dedicated check reads each paper's age criterion, mean or median age and range, with quotes).</li>
+<li><b>Evidence:</b> {g['verified_share']:.0%} of the quotes the reviewers gave were found word for word in the paper;
+the other {1 - g['verified_share']:.0%} were discarded and the rule counted as unclear, so no decision rests on an
+unverified quote.</li>
+<li><b>Accuracy against human decisions</b> could so far only be measured on a different dataset (Cochrane dementia
+screening, 40 papers): recall {cal['recall']:.2f}, precision {cal['precision']:.2f}, specificity
+{cal['specificity']:.2f}, Cohen's κ {cal['cohen_kappa']:.2f} (a keyword search: precision
+{cal['keyword_baseline']['precision']:.2f}, κ {cal['keyword_baseline']['cohen_kappa']:.2f}). Context only, not an
+estimate for this search.</li>
+<li><b>Accuracy on this search</b> needs a human check: <code>6_Random_Check.xlsx</code> has 40 random papers (10
+included, 10 excluded at each stage) with the AI's answers hidden. Once you mark include or exclude, we compute
+accuracy, sensitivity, specificity, precision and Cohen's κ with 95% confidence intervals.</li>
+</ul>
+
+<h2>5. How the AI decided</h2>
+<ul>
+<li>Three independent AI reviewers (different models; perspectives: neurologist, machine-learning researcher,
+methodologist) judged every rule: I1 dementia/Alzheimer's (MCI only with it), I2 AI/ML (logistic regression counts),
+I3 detection/diagnosis/monitoring/prediction, I4 older adults 65+; excluded: E1 reviews, E2 abstract only, E3 no
+original results, E4 not human (E3 and E4 are our proposals).</li>
+<li>A rule can only be marked as failed with an exact quote, checked by the program. Titles: excluded only if all three
+exclude. Abstracts: majority. Full text: included only when all four rules are clearly met.</li>
+<li>Papers the panel could not settle were re-read by a second model (settled {sl.get('included', 0) + sl.get('excluded', 0)}),
+age was then checked at 65+ in abstracts and full texts, and a third model re-read what was still open
+(settled {tl.get('included', 0) + tl.get('excluded', 0)}).</li>
 </ul>
 {img(ROOT / 'docs/diagrams/system-overview.png', 'How the system works')}
-{img(ROOT / 'docs/diagrams/consensus-by-stage.png', 'How decisions are made at each stage')}
 
-<h2>5. Please note</h2>
+<h2>6. Notes</h2>
 <ul>
-<li><b>Accuracy is not measured yet.</b> There is no human gold standard for this search. A small earlier test on a
-different dataset found the agents missed about 1 in 4 relevant papers. The random check below gives a first estimate
-on this search.</li>
-<li><b>Free full text only:</b> {side['paid_access_not_assessed']:,} paid-access papers were not assessed;
-{side['free_copy_to_save_by_hand']:,} free ones are still to be saved by hand and will be added.</li>
-<li><b>Age, strict reading:</b> a paper counts as 65+ when it requires 65+, its youngest participant is 65+, or the
-mean/median age of the sample is 65+ (the mean/median part is our proposal). When a paper gives ages only per group,
-the youngest group's mean was used, so a study whose younger comparison group averages under 65 is excluded. Please
-tell us if you prefer a looser reading.</li>
-<li>{f['not finished']} papers are not finished: one AI reviewer's service rejects them; they will be decided by hand.</li>
-<li>Some free copies are preprints (arXiv, bioRxiv, medRxiv), whose text can differ slightly from the published version.</li>
-<li>The models changed during the run because free services withdrew or limited them; each change and its effect is
-documented. All decisions, quotes and reasoning are saved for every paper.</li>
-<li>Cost: about ${usd:.2f} of paid model calls; everything else ran on free tiers (about 10 days, unattended).</li>
+<li>Age reading is strict: when ages are given only per group, the youngest group's mean was used.</li>
+<li>Some free copies are preprints. Model changes during the run are documented. Paid model calls cost
+${args.usd:.2f}; everything else ran on free services.</li>
+<li>Code, documentation and all diagrams:
+<a href="https://github.com/iUtsa/adrd-multiagent-review">github.com/iUtsa/adrd-multiagent-review</a>.</li>
 </ul>
 
-<h2>6. Random check (optional)</h2>
-<p><code>professor_check.xlsx</code> has 40 papers drawn at random: 10 included and 10 excluded at each stage, in random
-order. It shows only the paper (title, abstract, PubMed link) and a column for your decision; the AI's decision is
-hidden (and in <code>professor_check_answer_key.csv</code>). Comparing your decisions with the AI's gives a first
-estimate of how often it is right.</p>
-
 <h2>7. Files</h2>
-{table([[ '<code>stage1_titles.csv</code>', f"All {t['screened']:,} records: title decision, and the reason and quotes for each exclusion"],
-        ['<code>stage2_abstracts.csv</code>', f"The {a['screened']:,} papers that passed titles, with the abstract: decision, reason, quotes"],
-        ['<code>stage3_fulltext.csv</code>', f"The {a['passed']:,} papers that passed abstracts: included / excluded / for your decision / not assessed, with reason and quotes"],
-        ['<code>decisions.csv</code>', 'Every paper: final stage, outcome, reason, who decided, evidence (quotes)'],
-        ['<code>for_professor.csv</code>', f"The {f['for the professor']:,} papers that need your decision, with the reason"],
-        ['<code>not_assessed.csv</code>', 'Papers without an assessable free full text (to save by hand, or paid access)'],
-        ['<code>professor_check.xlsx</code> / <code>.csv</code>', 'The blind random check (40 papers)'],
-        ['<code>professor_check_answer_key.csv</code>', "The AI's decisions for the random check (open after checking)"],
-        ['<code>charts/</code>, <code>diagrams/</code>', 'All charts and diagrams in this report, and more']], ["File", "Contents"])}
+{table([['<code>1_Report.pdf</code>', 'This report'],
+        ['<code>2_Stage1_Titles.csv</code>', f"All {t['screened']:,} records: title decision, reason, quotes"],
+        ['<code>3_Stage2_Abstracts.csv</code>', f"The {a['screened']:,} that passed titles: abstract, decision, reason, quotes"],
+        ['<code>4_Stage3_FullText.csv</code>', f"The {a['passed']:,} that passed abstracts: final outcome, reason, quotes"],
+        ['<code>5_For_Your_Decision.csv</code>', 'Papers the AI could not settle, with the reason'],
+        ['<code>6_Random_Check.xlsx</code>', 'The blind random check (40 papers)']], ["File", "Contents"])}
 </body></html>"""
-    (out / "report.html").write_text(doc)
+    (out / "extras/report.html").write_text(doc)
     try:
         subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
-                        f"--print-to-pdf={(out / 'report.pdf').resolve()}", (out / "report.html").resolve().as_uri()],
+                        f"--print-to-pdf={(out / '1_Report.pdf').resolve()}", (out / "extras/report.html").resolve().as_uri()],
                        check=True, capture_output=True, timeout=120)
     except Exception as e:  # the HTML is the report; the PDF is a convenience
         print(f"(PDF not made: {type(e).__name__})", file=sys.stderr)
     (out / "README.txt").write_text(
-        "ADRD AI/ML screening results\n\nreport.pdf / report.html  the report\n"
-        "stage1_titles.csv         all records: title decision, reason, quotes\n"
-        "stage2_abstracts.csv      papers that passed titles: abstract decision, reason, quotes, abstract\n"
-        "stage3_fulltext.csv       papers that passed abstracts: full-text outcome, reason, quotes\n"
-        "decisions.csv             every paper's final outcome, reason and evidence\n"
-        "for_professor.csv         papers that need the professor's decision\n"
-        "not_assessed.csv          papers without an assessable free full text\n"
-        "professor_check.xlsx      blind random check (40 papers); AI answers hidden\n"
-        "professor_check.csv       the same check as CSV (no AI answers)\n"
-        "professor_check_answer_key.csv  the AI's answers for the check\n"
-        "summary.json              all counts\ncharts/  diagrams/       figures\n")
+        "ADRD AI/ML screening results: open the files in order.\n\n"
+        "1_Report.pdf              the report\n"
+        "2_Stage1_Titles.csv       every record: title decision, reason, quotes\n"
+        "3_Stage2_Abstracts.csv    papers that passed titles: abstract decision, reason, quotes, abstract\n"
+        "4_Stage3_FullText.csv     papers that passed abstracts: final outcome, reason, quotes\n"
+        "5_For_Your_Decision.csv   papers the AI could not settle, with the reason\n"
+        "6_Random_Check.xlsx       blind random check: mark include/exclude; the AI's answers are hidden\n"
+        "send_later/               the AI's answers for the random check (send after it is done)\n"
+        "extras/                   all decisions, counts, reliability, charts, diagrams, HTML report\n")
     print(f"Package: {out}")
     for p in sorted(out.rglob("*")):
         if p.is_file():
-            print(f"  {p.relative_to(out)}  ({p.stat().st_size // 1024} KB)")
+            print(f"  {p.relative_to(out)}  ({max(1, p.stat().st_size // 1024)} KB)")
     return 0
 
 

@@ -183,3 +183,22 @@ def test_report_figures_write_png_and_csv_and_read_the_loop_log(tmp_path):
                    "=== try 2: 2026-10-11 23:00 ===\n=== try 2 done 01:10: 1500 article(s) still open; run folder x ===\n")
     assert report_figures.progress(log, tmp_path).exists()
     assert "2026-10-12T01:10,1500" in (tmp_path / "progress.csv").read_text()  # finished after midnight
+
+
+def test_random_check_scoring_counts_misses_and_gives_intervals(tmp_path):
+    from adrd_review.eval import accuracy
+
+    key = tmp_path / "key.csv"
+    key.write_text("#,PMID,title,AI outcome\n1,a,t,included\n2,b,t,included\n3,c,t,excluded (title)\n"
+                   "4,d,t,excluded (abstract)\n5,e,t,excluded (full text)\n")
+    check = tmp_path / "check.csv"
+    check.write_text("#,PMID,your decision (include / exclude)\n1,a,include\n2,b,exclude\n3,c,exclude\n"
+                     "4,d,include\n5,e,\n")
+    r = accuracy.score_check(check, key)
+    assert r["scored"] == 4 and r["unsure_or_blank"] == 1
+    assert r["confusion"] == {"both include": 1, "both exclude": 1, "AI include, professor exclude": 1,
+                              "AI exclude, professor include (missed)": 1}
+    assert r["accuracy"]["value"] == 0.5 and r["sensitivity_recall"]["value"] == 0.5
+    lo, hi = r["accuracy"]["ci95"]
+    assert 0 < lo < 0.5 < hi < 1
+    assert accuracy.wilson(0, 0) is None and accuracy.kappa_label(0.55) == "moderate"
