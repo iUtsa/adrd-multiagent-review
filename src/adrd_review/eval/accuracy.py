@@ -1,4 +1,4 @@
-"""Accuracy and reliability for the professor's search.
+"""Accuracy and reliability for human review's search.
 
 There is no human gold standard for the 1,855 search results, so accuracy proper (agreement with a person) comes
 from the professor's blind random check; until she fills it in, this module reports what can be measured honestly:
@@ -9,7 +9,7 @@ from the professor's blind random check; until she fills it in, this module repo
                     discarded and the rule counts as unclear, so no decision rests on them)
     calibration     the one accuracy test against real human decisions so far (Cochrane dementia screening,
                     CLEF 2017, 40 papers): a different topic and codebook, reported as context only
-    random check    when the professor's professor_check.xlsx (or .csv) is filled in: accuracy, sensitivity
+    random check    when the professor's random_check.xlsx (or .csv) is filled in: accuracy, sensitivity
                     (recall of includes), specificity, precision, NPV and Cohen's kappa, each with a 95% Wilson
                     interval, overall and per group
 
@@ -100,7 +100,7 @@ def score_check(check: Path, key: Path) -> dict:
     ai = {str(r["#"]): r for r in csv.DictReader(key.open())}
     pairs = []
     for r in rows:
-        d = str(r.get("your decision (include / exclude)") or "").strip().lower()
+        d = str(r.get("human decision (include / exclude)") or "").strip().lower()
         if d in ("include", "exclude"):
             a = ai[str(r["#"])]
             pairs.append((d == "include", a["AI outcome"] == "included", a["AI outcome"]))
@@ -132,12 +132,12 @@ def score_check(check: Path, key: Path) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m adrd_review.eval.accuracy")
     ap.add_argument("run_dir")
-    ap.add_argument("--check", default=None, help="the professor's filled professor_check.xlsx or .csv")
+    ap.add_argument("--check", default=None, help="the professor's filled random_check.xlsx or .csv")
     args = ap.parse_args(argv)
     run_dir = Path(args.run_dir)
     out = run_dir / "final"
     if args.check:
-        res = score_check(Path(args.check), out / "professor_check_answer_key.csv")
+        res = score_check(Path(args.check), out / "random_check_answer_key.csv")
         (out / "accuracy_check.json").write_text(json.dumps(res, indent=2) + "\n")
         print(json.dumps(res, indent=2))
         return 0

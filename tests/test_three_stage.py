@@ -339,7 +339,7 @@ def test_stage_files_match_the_flow_and_hide_the_ai_columns(tmp_path):
     assert rows["title"][0]["abstract"] == "" and rows["abstract"][0]["abstract"]  # titles: what the reviewers saw
     assert {r["pmid"]: r["ai_outcome"] for r in rows["fulltext"]} == {"1": "passed", "3": "not retrieved"}
     assert [r["pmid"] for r in rows["included"]] == ["1"] == [str(flow["included"]["total"])]
-    assert all(r["prof_decision"] == "" for rs in rows.values() for r in rs)
+    assert all(r["human_decision"] == "" for rs in rows.values() for r in rs)
 
     wb = load_workbook(out / "stages.xlsx")
     assert wb.sheetnames == ["random sample", "1 titles", "2 abstracts", "3 full text", "4 included", "how to check"]
@@ -347,7 +347,7 @@ def test_stage_files_match_the_flow_and_hide_the_ai_columns(tmp_path):
     header = [c.value for c in ws[1]]
     ai = ws.cell(row=1, column=header.index("ai_outcome") + 1).column_letter
     assert ws.column_dimensions[ai].hidden  # blind: the AI's decision is hidden until unhidden
-    assert header.index("prof_decision") < header.index("ai_outcome")
+    assert header.index("human_decision") < header.index("ai_outcome")
     picked = stages.sample(rows, n=1, seed=1)
     assert picked == stages.sample(rows, n=1, seed=1)  # the same seed draws the same papers
     assert {(r["stage"], r["ai_outcome"]) for r in picked} == {(s, r["ai_outcome"]) for s, rs in rows.items() for r in rs
@@ -426,7 +426,7 @@ def test_second_look_rereads_only_the_papers_left_for_a_person(tmp_path):
             raise LLMError("down")
 
     (row,) = second_look.run(tmp_path, llm=Down())
-    assert row["second look"] == "for the professor" and "failed" in row["reasoning"]  # never guessed
+    assert row["second look"] == "for human review" and "failed" in row["reasoning"]  # never guessed
 
 
 def test_age_check_applies_65_from_quoted_ages_only():
@@ -455,7 +455,7 @@ def test_final_results_summary_counts_each_paper_once_and_keeps_paid_access_asid
              {"stage": "abstract", "outcome": "excluded", "reason": "I4 Older adults (65 or over)",
               "decided by": "age check on the abstract"},
              {"stage": "full text", "outcome": "included", "reason": "all rules met", "decided by": "panel"},
-             {"stage": "full text", "outcome": "for the professor", "reason": "age", "decided by": "x"},
+             {"stage": "full text", "outcome": "for human review", "reason": "age", "decided by": "x"},
              {"stage": "full text", "outcome": fr.PAID, "reason": "no free full text", "decided by": ""},
              {"stage": "full text", "outcome": fr.HAND, "reason": "blocked", "decided by": ""}]
     s = fr.summarize(final)
@@ -495,7 +495,7 @@ def test_third_look_needs_65_plus_and_every_other_rule_met():
            ("E4", "does_not_apply", None)]
     age74 = ac.AgeAnswer(mean_age=ac.AgeFact(value=74.2, quote="a mean age of 74.2 years"))
     assert tl.look(state, {}, "age", AIML, stub(age74, met))["third look"] == "included"
-    assert tl.look(state, {}, "age", AIML, stub(ac.AgeAnswer(), met))["third look"] == "for the professor"
+    assert tl.look(state, {}, "age", AIML, stub(ac.AgeAnswer(), met))["third look"] == "for human review"
     # an earlier verified age check counts when this model finds no age
     assert tl.look(state, {"I4 at 65": "met", "reason": "mean 70"}, "age", AIML, stub(ac.AgeAnswer(), met))["third look"] == "included"
     not_ai = [m if m[0] != "I2" else ("I2", "not_met", "This is an original study of human participants") for m in met]

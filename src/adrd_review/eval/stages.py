@@ -8,7 +8,7 @@
                      from each stage) and 'how to check'
 
 In the workbook the AI's decision columns are hidden, so a reviewer can decide from the paper first
-(prof_decision) and then unhide them to compare (blind check).
+(human_decision) and then unhide them to compare (blind check).
 
 Stages are assigned as in the PRISMA flow (eval/flow.py). Papers still open (e.g. waiting for a daily limit)
 are included from in_progress.jsonl: listed at each stage they finished, and as 'still open' at the stage they
@@ -44,7 +44,7 @@ STAGES = [("title", "1_title", "1 titles"), ("abstract", "2_abstract", "2 abstra
 # The paper and the checker's columns come first; the AI's columns follow (hidden in the workbook).
 PAPER_COLS = [("stage", 10), ("pmid", 11), ("link", 18), ("title", 50), ("year", 6), ("journal", 24),
               ("abstract", 70), ("full text source", 14)]
-CHECK_COLS = [("prof_decision", 14), ("prof_rule", 10), ("prof_notes", 40)]
+CHECK_COLS = [("human_decision", 14), ("human_rule", 10), ("human_notes", 40)]
 AI_COLS = [("ai_outcome", 16), ("how decided", 14), ("main reason", 34), ("escalated", 16), ("reviewer votes", 30),
            ("rule marks", 60), ("quotes", 60), ("reasoning", 60)]
 COLUMNS = PAPER_COLS + CHECK_COLS + AI_COLS
@@ -141,7 +141,7 @@ def _row(s: dict, stage: str, outcome: str, names: dict[str, str]) -> dict:
         "journal": a.get("journal") or "",
         "abstract": "" if stage == "title" else (a.get("abstract") or "(no abstract)"),
         "full text source": (info.get("source") or "none") if info.get("stage") == 2 else "",
-        "prof_decision": "", "prof_rule": "", "prof_notes": "",
+        "human_decision": "", "human_rule": "", "human_notes": "",
         "ai_outcome": outcome,
         "how decided": (decision or {}).get("method") or ("open: " + s["open"][:80] if outcome == "still open" else ""),
         "main reason": (_main_reason(votes, decision, names) if outcome == "excluded"
@@ -201,9 +201,9 @@ def _sheet(wb: Workbook, title: str, rows: list[dict]) -> None:
     first_ai = len(PAPER_COLS) + len(CHECK_COLS) + 1
     ws.column_dimensions.group(ws.cell(row=1, column=first_ai).column_letter,
                                ws.cell(row=1, column=len(COLUMNS)).column_letter, hidden=True)
-    col = ws.cell(row=1, column=[c for c, _ in COLUMNS].index("prof_decision") + 1).column_letter
+    col = ws.cell(row=1, column=[c for c, _ in COLUMNS].index("human_decision") + 1).column_letter
     dv = DataValidation(type="list", formula1='"' + ",".join(DECISIONS) + '"', allow_blank=True)
-    dv.prompt = "Your decision from the paper alone, before unhiding the AI columns."
+    dv.prompt = "Human decision from the paper alone, before unhiding the AI columns."
     ws.add_data_validation(dv)
     dv.add(f"{col}2:{col}{max(2, len(rows) + 1)}")
 
@@ -233,7 +233,7 @@ def export(run_dir: Path, out_dir: Path | None = None, n: int = DEFAULT_SAMPLE, 
         ["Run", str(run_dir)],
         ["Random sample", f"up to {n} papers per stage and outcome (excluded, passed, ...), seed {seed}: "
                           f"python -m adrd_review.eval.stages {run_dir} --sample {n} --seed {seed} draws the same papers"],
-        ["Blind check", "Decide from the paper first (prof_decision: include / exclude / unsure; prof_rule: e.g. I1 or E1), "
+        ["Blind check", "Decide from the paper first (human_decision: include / exclude / unsure; human_rule: e.g. I1 or E1), "
                         "then click the + above the columns on the right to show the AI's decision and compare."],
         ["What each stage saw", "Titles: the title only. Abstracts: title and abstract. Full text: the paper "
                                 "(PubMed Central or a PDF in data/pdfs)."],

@@ -34,7 +34,7 @@ from adrd_review.schemas import Article
 # (2026-10-21), so the answer gets 16,000 tokens. No overflow host: NVIDIA's free copy hung for minutes per paper; a
 # paper whose call fails stays with the professor (re-run to retry).
 DEFAULT_MODEL = ModelConfig(provider="openrouter", model="z-ai/glm-5.3", max_tokens=16000, requests_per_minute=30)
-OUTCOME = {"include": "included", "exclude": "excluded", "unclear": "for the professor"}
+OUTCOME = {"include": "included", "exclude": "excluded", "unclear": "for human review"}
 
 PERSONA = (
     "the senior second reviewer. A panel of three reviewers read this paper and could not settle these rules: "
@@ -65,7 +65,7 @@ def look(state: dict, codebook: Codebook, llm: LLM) -> dict:
                for v in state.get("eligibility_votes") or []),
            "open rules": ", ".join(rules)}
     if not article.fulltext:
-        return row | {"second look": "for the professor", "decision": "", "rule marks": "", "quotes": "",
+        return row | {"second look": "for human review", "decision": "", "rule marks": "", "quotes": "",
                       "reasoning": "no full text saved for this paper", "model": ""}
     vote, usage = eligibility.run(article, codebook, llm, reviewer_id="S",
                                   persona=PERSONA.format(rules=", ".join(names[r] for r in rules)))
@@ -89,7 +89,7 @@ def run(run_dir: Path, model: ModelConfig = DEFAULT_MODEL, concurrency: int = 4,
         try:
             return look(state, codebook, llm)
         except Exception as e:  # a failed call leaves the paper with the professor; re-run to retry (cached)
-            return {"pmid": state["pmid"], "title": state["article"].get("title", ""), "second look": "for the professor",
+            return {"pmid": state["pmid"], "title": state["article"].get("title", ""), "second look": "for human review",
                     "reasoning": f"second look failed: {type(e).__name__}: {str(e)[:200]}"}
 
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:

@@ -1,8 +1,8 @@
-"""Third look: one more independent model on the papers still left for the professor after the final result.
+"""Third look: one more independent model on the papers still left for human review after the final result.
 
 Asked for by Utsa (2026-10-21) to settle more of those papers. The model is from a family used nowhere else in the
 review (DeepSeek; the panel used gpt-oss, Qwen, Nemotron, Gemma, dots; the second look GLM; the age check Nemotron).
-For each paper in <run>/final/for_professor.csv it reads the same full text and:
+For each paper in <run>/final/for_human_review.csv it reads the same full text and:
 
 1. extracts the participants' age facts with quotes (the age check's form) and applies 65+ (age_check.decide);
 2. marks every rule with quotes (the full-text reviewer's form; told which rules are open, not anyone's votes).
@@ -48,7 +48,7 @@ def look(state: dict, prev_age: dict, reason: str, codebook, llm: LLM) -> dict:
     article = Article.model_validate(state["article"])
     row = {"pmid": state["pmid"], "title": article.title, "before": reason}
     if not article.fulltext:
-        return row | {"third look": "for the professor", "why": "no full text saved"}
+        return row | {"third look": "for human review", "why": "no full text saved"}
     res = llm.structured(age_check.AgeAnswer, age_check.SYSTEM,
                          f"PAPER (PMID {article.pmid})\n\n{article.title}\n\n{article.fulltext}", role="third_look_age")
     i4, age_reason = age_check.decide(res.parsed, article)
@@ -68,7 +68,7 @@ def look(state: dict, prev_age: dict, reason: str, codebook, llm: LLM) -> dict:
         outcome, why = "included", f"all rules met; age: {age_reason}"
     else:
         open_ = (["I4 (age)"] if i4 != "met" else []) + [r.id for r in others if checks.get(r.id) != "met"]
-        outcome, why = "for the professor", "still unclear: " + ", ".join(open_)
+        outcome, why = "for human review", "still unclear: " + ", ".join(open_)
     a = res.parsed
     return row | {"third look": outcome, "why": why, "I4 at 65": i4,
                   "rule marks": " · ".join(f"{k} {m}" for k, m in checks.items()),
@@ -84,13 +84,13 @@ def run(run_dir: Path, model: ModelConfig = DEFAULT_MODEL, concurrency: int = 6,
     states = {s["pmid"]: s for s in load_states(run_dir)}
     prev = {r["pmid"]: r for r in csv.DictReader((run_dir / "age_check.csv").open())} \
         if (run_dir / "age_check.csv").exists() else {}
-    papers = list(csv.DictReader((run_dir / "final" / "for_professor.csv").open()))
+    papers = list(csv.DictReader((run_dir / "final" / "for_human_review.csv").open()))
 
     def one(p):
         try:
             return look(states[p["pmid"]], prev.get(p["pmid"], {}), p["reason"], codebook, llm)
         except Exception as e:  # a failed call leaves the paper with the professor; re-run to retry (cached)
-            return {"pmid": p["pmid"], "title": p["title"], "before": p["reason"], "third look": "for the professor",
+            return {"pmid": p["pmid"], "title": p["title"], "before": p["reason"], "third look": "for human review",
                     "why": f"third look failed: {type(e).__name__}: {str(e)[:200]}"}
 
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
@@ -121,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         llm = build_llm(DEFAULT_MODEL, meta.get("cache_dir", "data/cache/llm"), cb)
         states = {s["pmid"]: s for s in load_states(run_dir)}
         prev = {r["pmid"]: r for r in csv.DictReader((run_dir / "age_check.csv").open())}
-        for p in list(csv.DictReader((run_dir / "final" / "for_professor.csv").open()))[: args.limit]:
+        for p in list(csv.DictReader((run_dir / "final" / "for_human_review.csv").open()))[: args.limit]:
             r = look(states[p["pmid"]], prev.get(p["pmid"], {}), p["reason"], cb, llm)
             print(r["pmid"], "|", r["third look"], "|", r["why"][:120])
         return 0

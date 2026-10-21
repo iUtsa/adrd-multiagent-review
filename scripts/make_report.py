@@ -1,4 +1,4 @@
-"""Build the simple package for the professor from a run's final results.
+"""Build the simple results package from a run's final results.
 
     python -m adrd_review.final_results <run>        # first: final decisions, stage files, random check
     python -m adrd_review.eval.accuracy <run>        # first: reliability (accuracy.json)
@@ -8,8 +8,8 @@ Package (git-ignored, under data/deliverables/):
     1_Report.pdf                 the report (also extras/report.html)
     2_Stage1_Titles.csv          every record: title decision, reason, quotes
     3_Stage2_Abstracts.csv       papers that passed titles: abstract decision, reason, quotes, abstract
-    4_Stage3_FullText.csv        papers that passed abstracts: included / excluded / for your decision / not assessed
-    5_For_Your_Decision.csv      papers the AI could not settle, with the reason
+    4_Stage3_FullText.csv        papers that passed abstracts: included / excluded / for human review / not assessed
+    5_For_Human_Review.csv      papers the AI could not settle, with the reason
     6_Random_Check.xlsx          blind random check (40 papers; AI answers hidden)
     send_later/Random_Check_Answer_Key.csv   the AI's answers (send after the check)
     extras/                      all decisions, counts, reliability, charts, diagrams, the HTML report
@@ -66,10 +66,10 @@ def main(argv: list[str]) -> int:
         (out / sub).mkdir(parents=True, exist_ok=True)
 
     copies = {"stage1_titles.csv": "2_Stage1_Titles.csv", "stage2_abstracts.csv": "3_Stage2_Abstracts.csv",
-              "stage3_fulltext.csv": "4_Stage3_FullText.csv", "for_professor.csv": "5_For_Your_Decision.csv",
-              "professor_check.xlsx": "6_Random_Check.xlsx",
-              "professor_check_answer_key.csv": "send_later/Random_Check_Answer_Key.csv",
-              "professor_check.csv": "extras/random_check.csv", "decisions.csv": "extras/all_decisions.csv",
+              "stage3_fulltext.csv": "4_Stage3_FullText.csv", "for_human_review.csv": "5_For_Human_Review.csv",
+              "random_check.xlsx": "6_Random_Check.xlsx",
+              "random_check_answer_key.csv": "send_later/Random_Check_Answer_Key.csv",
+              "random_check.csv": "extras/random_check.csv", "decisions.csv": "extras/all_decisions.csv",
               "not_assessed.csv": "extras/not_assessed.csv", "summary.json": "extras/summary.json",
               "accuracy.json": "extras/reliability.json"}
     for src, dst in copies.items():
@@ -97,7 +97,7 @@ def main(argv: list[str]) -> int:
         return Counter(r[col] for r in csv.DictReader(p.open())) if p.exists() else Counter()
 
     sl, tl = looks("second_look.csv", "second look"), looks("third_look.csv", "third look")
-    waiting = f["for the professor"] + f["not finished"]
+    waiting = f["for human review"] + f["not finished"]
 
     stage_rows = [["1. Titles", f"{t['screened']:,}", f"{t['excluded']:,}", f"{t['passed']:,}", "—"],
                   ["2. Abstracts", f"{a['screened']:,}", f"{a['excluded']:,}", f"{a['passed']:,}", "—"],
@@ -127,11 +127,11 @@ def main(argv: list[str]) -> int:
 <p class="sub">{t['screened']:,} PubMed records · titles → abstracts → full text · {date.today().strftime('%B %d, %Y')} · Arnab Das Utsa</p>
 
 <div class="box"><b>Result.</b> Of {t['screened']:,} records, <b>{f['included']:,} papers are included</b> and
-<b>{waiting:,} need your decision</b> ({age_prof:,} of them only because the paper does not state the participants'
-age). Criteria: yours, with older adults = 65 or over. Full texts: free copies only.</div>
+<b>{waiting:,} need human review</b> ({age_prof:,} of them only because the paper does not state the participants'
+age). Criteria: the review criteria, with older adults = 65 or over. Full texts: free copies only.</div>
 
 <h2>1. Papers at each stage</h2>
-{table(stage_rows, ["Stage", "Screened", "Excluded", "Passed / included", "Your decision"])}
+{table(stage_rows, ["Stage", "Screened", "Excluded", "Passed / included", "Human review"])}
 <p class="sub">Not counted: {side['free_copy_to_save_by_hand']:,} free full texts still to be downloaded by hand and
 {side['paid_access_not_assessed']:,} subscription-only papers (not assessed).</p>
 {img(fin / 'final_stages.png', 'Papers at each stage')}
@@ -139,11 +139,11 @@ age). Criteria: yours, with older adults = 65 or over. Full texts: free copies o
 <h2>2. Why papers were excluded</h2>
 {table(reason_rows, ["Main reason", "Titles", "Abstracts", "Full text"])}
 
-<h2>3. Papers that need your decision</h2>
+<h2>3. Papers that need human review</h2>
 {table(prof_rows, ["Why the AI could not decide", "Papers"])}
 <div class="box warn"><b>One question settles {age_prof:,} of them:</b> if a paper does not report age (e.g. ADNI or
 NACC data without an age table), should it count as 65+? Yes: about {f['included'] + age_prof:,} included in total;
-no: {f['included']:,}. List: <code>5_For_Your_Decision.csv</code>.</div>
+no: {f['included']:,}. List: <code>5_For_Human_Review.csv</code>.</div>
 
 <h2>4. Reliability and accuracy</h2>
 <p><b>Agreement among the three AI reviewers</b> (independent votes, before any reconciliation):</p>
@@ -190,7 +190,7 @@ ${args.usd:.2f}; everything else ran on free services.</li>
         ['<code>2_Stage1_Titles.csv</code>', f"All {t['screened']:,} records: title decision, reason, quotes"],
         ['<code>3_Stage2_Abstracts.csv</code>', f"The {a['screened']:,} that passed titles: abstract, decision, reason, quotes"],
         ['<code>4_Stage3_FullText.csv</code>', f"The {a['passed']:,} that passed abstracts: final outcome, reason, quotes"],
-        ['<code>5_For_Your_Decision.csv</code>', 'Papers the AI could not settle, with the reason'],
+        ['<code>5_For_Human_Review.csv</code>', 'Papers the AI could not settle, with the reason'],
         ['<code>6_Random_Check.xlsx</code>', 'The blind random check (40 papers)']], ["File", "Contents"])}
 </body></html>"""
     (out / "extras/report.html").write_text(doc)
@@ -206,7 +206,7 @@ ${args.usd:.2f}; everything else ran on free services.</li>
         "2_Stage1_Titles.csv       every record: title decision, reason, quotes\n"
         "3_Stage2_Abstracts.csv    papers that passed titles: abstract decision, reason, quotes, abstract\n"
         "4_Stage3_FullText.csv     papers that passed abstracts: final outcome, reason, quotes\n"
-        "5_For_Your_Decision.csv   papers the AI could not settle, with the reason\n"
+        "5_For_Human_Review.csv   papers the AI could not settle, with the reason\n"
         "6_Random_Check.xlsx       blind random check: mark include/exclude; the AI's answers are hidden\n"
         "send_later/               the AI's answers for the random check (send after it is done)\n"
         "extras/                   all decisions, counts, reliability, charts, diagrams, HTML report\n")

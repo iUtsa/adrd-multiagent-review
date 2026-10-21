@@ -1,6 +1,6 @@
 """Result figures for a finished run (free full text only), each saved as PNG plus a CSV of the plotted numbers.
 
-    stage_outcomes      papers per stage: passed / excluded / for the professor / retry
+    stage_outcomes      papers per stage: passed / excluded / for human review / retry
     exclusion_reasons   main rule behind each exclusion, per stage
     panel_agreement     Fleiss' kappa and share of unanimous votes among reviewers A, B, C, per stage
     how_decided         unanimous / majority / no majority, per stage
@@ -11,7 +11,7 @@
     second_look         outcome of the second look at the papers left for a person (if second_look.csv exists)
 
 Paid-access papers (no free full text) are not part of any chart; their number is printed as a side note.
-Colours: the validated reference palette (blue = passed/included, orange = excluded, aqua = for the professor,
+Colours: the validated reference palette (blue = passed/included, orange = excluded, aqua = for human review,
 grey = retry/open); every segment carries a direct label, and every chart has its numbers in a CSV.
 
     python -m adrd_review.eval.report_figures data/runs/<name>/<timestamp> --out docs/diagrams/results
@@ -90,7 +90,7 @@ def stage_outcomes(rows: dict, out: Path):
                       ("Still open", sum(r["ai_outcome"] == "still open" for r in rows["abstract"]), GREY)],
         "Full text (free)": [("Included", sum(r["ai_outcome"] == "passed" for r in rows["fulltext"]), BLUE),
                              ("Excluded", sum(r["ai_outcome"] == "excluded" for r in rows["fulltext"]), ORANGE),
-                             ("For the professor", sum(r["ai_outcome"] == "waiting for a person" for r in rows["fulltext"]), AQUA),
+                             ("For human review", sum(r["ai_outcome"] == "waiting for a person" for r in rows["fulltext"]), AQUA),
                              ("Retry", sum(r["ai_outcome"] == "still open" for r in rows["fulltext"]), GREY)],
     }
     fig, ax = plt.subplots(figsize=(9, 3.2))
@@ -115,7 +115,7 @@ def stage_outcomes(rows: dict, out: Path):
     ax.set_axisbelow(True)
     ax.tick_params(axis="y", length=0)
     handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in (BLUE, ORANGE, AQUA, GREY)]
-    ax.legend(handles, ["Passed / included", "Excluded", "For the professor", "Still open / retry"],
+    ax.legend(handles, ["Passed / included", "Excluded", "For human review", "Still open / retry"],
               ncol=4, frameon=False, loc="upper left", bbox_to_anchor=(0, -0.12), fontsize=9)
     ax.set_title("Papers at each stage (free full text only)")
     data = [{"stage": g, "outcome": label, "papers": n} for g in groups for label, n, _ in groups[g]]
@@ -350,7 +350,7 @@ def second_look(path: Path, out: Path):
     rows = list(csv.DictReader(path.open()))
     c = Counter(r["second look"] for r in rows)
     parts = [("Included", c.get("included", 0), BLUE), ("Excluded", c.get("excluded", 0), ORANGE),
-             ("Still for the professor", c.get("for the professor", 0), AQUA)]
+             ("Still for human review", c.get("for human review", 0), AQUA)]
     fig, ax = plt.subplots(figsize=(9, 1.8))
     left = 0
     for label, n, color in parts:

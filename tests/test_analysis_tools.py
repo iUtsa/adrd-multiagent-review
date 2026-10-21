@@ -192,7 +192,7 @@ def test_random_check_scoring_counts_misses_and_gives_intervals(tmp_path):
     key.write_text("#,PMID,title,AI outcome\n1,a,t,included\n2,b,t,included\n3,c,t,excluded (title)\n"
                    "4,d,t,excluded (abstract)\n5,e,t,excluded (full text)\n")
     check = tmp_path / "check.csv"
-    check.write_text("#,PMID,your decision (include / exclude)\n1,a,include\n2,b,exclude\n3,c,exclude\n"
+    check.write_text("#,PMID,human decision (include / exclude)\n1,a,include\n2,b,exclude\n3,c,exclude\n"
                      "4,d,include\n5,e,\n")
     r = accuracy.score_check(check, key)
     assert r["scored"] == 4 and r["unsure_or_blank"] == 1

@@ -6,7 +6,7 @@
     3. Full text       free full text only. The panel (majority), then the second look on papers it left unclear
                        (second_look.csv), then the age rule (65+) on the full text (age_check.csv), then the third
                        look on what is still unsettled (third_look.csv, if present)
-    4. Outcome         included / excluded at <stage> / for the professor / not assessed (no free full text)
+    4. Outcome         included / excluded at <stage> / for human review / not assessed (no free full text)
 
 Inputs (all in the run folder): decisions.jsonl + in_progress.jsonl, second_look.csv, age_check.csv,
 age_check_abstract.csv, and free_fulltext_found.csv (from scripts/fetch_free_fulltext.py; may be in an earlier
@@ -14,9 +14,9 @@ run folder: --free-found) to tell papers with a free copy still to save by hand 
 
     python -m adrd_review.final_results data/runs/PROF_search_free/<timestamp> [--free-found <csv>]
 
-Writes <run>/final/: decisions.csv (one row per paper), summary.json, stage_table.md, for_professor.csv,
+Writes <run>/final/: decisions.csv (one row per paper), summary.json, stage_table.md, for_human_review.csv,
 not_assessed.csv, the final charts (final_stages.png, final_reasons.png + their CSVs), and the professor's blind
-random check (professor_check.csv / .xlsx: 10 included + 10 excluded at each stage, shuffled; answer key separate).
+random check (random_check.csv / .xlsx: 10 included + 10 excluded at each stage, shuffled; answer key separate).
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def build(run_dir: Path, free_found: Path | None = None) -> list[dict]:
     age_ft = _read(run_dir / "age_check.csv")
     age_ab = _read(run_dir / "age_check_abstract.csv")
     found = _read(free_found or run_dir / "free_fulltext_found.csv")
-    third = _read(run_dir / "third_look.csv")  # one more independent model on the papers left for the professor
+    third = _read(run_dir / "third_look.csv")  # one more independent model on the papers left for human review
 
     for stage_rows in (title, abstract, fulltext):
         for r in stage_rows.values():
@@ -137,7 +137,7 @@ def build(run_dir: Path, free_found: Path | None = None) -> list[dict]:
                                   "decided by": f"third look ({tl.get('model', '')}): {tl['why']}",
                                   "evidence": tl.get("age quotes") or tl.get("quotes", "")})
                 continue
-            out.append(rec | {"stage": "full text", "outcome": "for the professor", "reason": why,
+            out.append(rec | {"stage": "full text", "outcome": "for human review", "reason": why,
                               "decided by": "panel, second look, age check" + (" and third look" if tl else "")
                                             + " could not settle it",
                               "evidence": tl.get("reasoning") or s.get("reasoning", "")})
@@ -149,29 +149,29 @@ def summarize(final: list[dict]) -> dict:
     reasons = {st: dict(Counter(r["reason"] for r in final if r["stage"] == st and r["outcome"] == "excluded").most_common())
                for st in ("title", "abstract", "full text")}
     t_ex, a_ex = by[("title", "excluded")], by[("abstract", "excluded")]
-    ft = {k: by[("full text", k)] for k in ("included", "excluded", "for the professor", "not finished", PAID, HAND)}
-    free_read = ft["included"] + ft["excluded"] + ft["for the professor"] + ft["not finished"]
+    ft = {k: by[("full text", k)] for k in ("included", "excluded", "for human review", "not finished", PAID, HAND)}
+    free_read = ft["included"] + ft["excluded"] + ft["for human review"] + ft["not finished"]
     return {
         "records": len(final),
         "title": {"screened": len(final), "excluded": t_ex, "passed": len(final) - t_ex},
         "abstract": {"screened": len(final) - t_ex, "excluded": a_ex, "passed": len(final) - t_ex - a_ex,
                      "excluded_by_age_check": sum(1 for r in final if r["decided by"] == "age check on the abstract")},
-        "fulltext_free": {"assessed": free_read, **{k: ft[k] for k in ("included", "excluded", "for the professor",
+        "fulltext_free": {"assessed": free_read, **{k: ft[k] for k in ("included", "excluded", "for human review",
                                                                           "not finished")}},
         "side_note": {"free_copy_to_save_by_hand": ft[HAND], "paid_access_not_assessed": ft[PAID]},
         "exclusion_reasons": reasons,
-        "for_the_professor_reasons": dict(Counter(r["reason"] for r in final if r["outcome"] == "for the professor").most_common()),
+        "for_the_professor_reasons": dict(Counter(r["reason"] for r in final if r["outcome"] == "for human review").most_common()),
     }
 
 
 def stage_table(s: dict) -> str:
     f = s["fulltext_free"]
     lines = [
-        "| Stage | In | Excluded | Passed / included | For the professor |",
+        "| Stage | In | Excluded | Passed / included | For human review |",
         "|---|---|---|---|---|",
         f"| 1. Titles | {s['title']['screened']:,} | {s['title']['excluded']:,} | {s['title']['passed']:,} | — |",
         f"| 2. Abstracts | {s['abstract']['screened']:,} | {s['abstract']['excluded']:,} | {s['abstract']['passed']:,} | — |",
-        f"| 3. Full text (free) | {f['assessed']:,} | {f['excluded']:,} | **{f['included']:,}** | {f['for the professor']:,}"
+        f"| 3. Full text (free) | {f['assessed']:,} | {f['excluded']:,} | **{f['included']:,}** | {f['for human review']:,}"
         + (f" (+{f['not finished']} not finished)" if f["not finished"] else "") + " |",
         "",
         f"Side note (not counted): {s['side_note']['free_copy_to_save_by_hand']:,} papers have a free copy still to be "
@@ -188,7 +188,7 @@ def figures(final: list[dict], s: dict, out: Path) -> None:
     groups = {"Titles": [("Passed", s["title"]["passed"], rf.BLUE), ("Excluded", s["title"]["excluded"], rf.ORANGE)],
               "Abstracts": [("Passed", s["abstract"]["passed"], rf.BLUE), ("Excluded", s["abstract"]["excluded"], rf.ORANGE)],
               "Full text (free)": [("Included", f["included"], rf.BLUE), ("Excluded", f["excluded"], rf.ORANGE),
-                                   ("For the professor", f["for the professor"], rf.AQUA),
+                                   ("For human review", f["for human review"], rf.AQUA),
                                    ("Not finished", f["not finished"], rf.GREY)]}
     fig, ax = plt.subplots(figsize=(9, 3.2))
     names = list(groups)[::-1]
@@ -212,7 +212,7 @@ def figures(final: list[dict], s: dict, out: Path) -> None:
     ax.set_axisbelow(True)
     ax.tick_params(axis="y", length=0)
     ax.legend([plt.Rectangle((0, 0), 1, 1, color=c) for c in (rf.BLUE, rf.ORANGE, rf.AQUA)],
-              ["Passed / included", "Excluded", "For the professor"], ncol=3, frameon=False, loc="upper left",
+              ["Passed / included", "Excluded", "For human review"], ncol=3, frameon=False, loc="upper left",
               bbox_to_anchor=(0, -0.12), fontsize=9)
     ax.set_title("Final result: papers at each stage (older adults 65+, free full text only)")
     rf._save(fig, out, "final_stages", [{"stage": g, "outcome": l, "papers": n} for g in groups for l, n, _ in groups[g]])
@@ -243,7 +243,7 @@ def figures(final: list[dict], s: dict, out: Path) -> None:
 def stage_files(final: list[dict], run_dir: Path, out: Path) -> dict[str, int]:
     """Three CSVs, one per stage, listing every paper that reached it and what happened to it there:
     stage1_titles.csv (all records), stage2_abstracts.csv (papers that passed titles, with the abstract),
-    stage3_fulltext.csv (papers that passed abstracts: included / excluded / for the professor / not assessed)."""
+    stage3_fulltext.csv (papers that passed abstracts: included / excluded / for human review / not assessed)."""
     from adrd_review.eval.stages import load_states
 
     states = {s["pmid"]: s for s in load_states(run_dir)}
@@ -286,7 +286,7 @@ CHECK_GROUPS = [("included", lambda r: r["outcome"] == "included"),
                 ("excluded at full text", lambda r: r["stage"] == "full text" and r["outcome"] == "excluded")]
 
 
-def professor_check(final: list[dict], run_dir: Path, out: Path, n: int = 10, seed: int = 20261021) -> list[dict]:
+def random_check(final: list[dict], run_dir: Path, out: Path, n: int = 10, seed: int = 20261021) -> list[dict]:
     """A blind random check: n papers from each group (included; excluded at title / abstract / full text), shuffled.
     The professor's file shows only the paper; the AI's decision is in a separate answer key (and hidden columns)."""
     import random
@@ -305,17 +305,17 @@ def professor_check(final: list[dict], run_dir: Path, out: Path, n: int = 10, se
         picked += [r | {"group": name} for r in rng.sample(group, min(n, len(group)))]
     rng.shuffle(picked)
     rows = [{"#": i, "PMID": r["pmid"], "PubMed link": r["link"], "title": r["title"], "year": r["year"],
-             "abstract": abstracts.get(r["pmid"], ""), "your decision (include / exclude)": "",
-             "your reason (rule, e.g. I1, I4, E1)": "", "notes": "",
+             "abstract": abstracts.get(r["pmid"], ""), "human decision (include / exclude)": "",
+             "human reason (rule, e.g. I1, I4, E1)": "", "notes": "",
              "AI outcome": f"{r['outcome']} ({r['stage']})" if r["outcome"] == "excluded" else r["outcome"],
              "AI reason": r["reason"], "AI decided by": r["decided by"], "AI evidence": r["evidence"]}
             for i, r in enumerate(picked, 1)]
     blind = [c for c in rows[0] if not c.startswith("AI ")]
-    with (out / "professor_check.csv").open("w", newline="") as fh:
+    with (out / "random_check.csv").open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=blind, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-    with (out / "professor_check_answer_key.csv").open("w", newline="") as fh:
+    with (out / "random_check_answer_key.csv").open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=["#", "PMID", "title", "AI outcome", "AI reason", "AI decided by", "AI evidence"],
                            extrasaction="ignore")
         w.writeheader()
@@ -329,7 +329,7 @@ def professor_check(final: list[dict], run_dir: Path, out: Path, n: int = 10, se
     for r in rows:
         ws.append([r[c] for c in cols])
     widths = {"#": 5, "PMID": 11, "PubMed link": 18, "title": 45, "year": 6, "abstract": 80,
-              "your decision (include / exclude)": 16, "your reason (rule, e.g. I1, I4, E1)": 16, "notes": 30}
+              "human decision (include / exclude)": 16, "human reason (rule, e.g. I1, I4, E1)": 16, "notes": 30}
     for i, c in enumerate(cols, 1):
         cell = ws.cell(row=1, column=i)
         cell.font = Font(bold=True)
@@ -344,7 +344,7 @@ def professor_check(final: list[dict], run_dir: Path, out: Path, n: int = 10, se
                                ws.cell(row=1, column=len(cols)).column_letter, hidden=True)
     dv = DataValidation(type="list", formula1='"include,exclude,unsure"', allow_blank=True)
     ws.add_data_validation(dv)
-    col = ws.cell(row=1, column=cols.index("your decision (include / exclude)") + 1).column_letter
+    col = ws.cell(row=1, column=cols.index("human decision (include / exclude)") + 1).column_letter
     dv.add(f"{col}2:{col}{len(rows) + 1}")
     ws.freeze_panes = "D2"
     how = wb.create_sheet("how to check")
@@ -354,7 +354,7 @@ def professor_check(final: list[dict], run_dir: Path, out: Path, n: int = 10, se
         "For each paper, decide from the abstract and, if needed, the full paper (PubMed link) whether it belongs in "
         "the review under your criteria: include or exclude, and the main rule.",
         "The AI's decision is in the hidden columns on the right (click the + above them) and in "
-        "professor_check_answer_key.csv: look only after deciding.",
+        "random_check_answer_key.csv: look only after deciding.",
         "Criteria: I1 dementia/Alzheimer's (MCI only together with it); I2 AI/ML (logistic regression counts); "
         "I3 detection/diagnosis/monitoring/prediction; I4 older adults 65+; E1 review; E2 abstract only; "
         "E3 no original results; E4 not human.",
@@ -363,7 +363,7 @@ def professor_check(final: list[dict], run_dir: Path, out: Path, n: int = 10, se
     how.column_dimensions["A"].width = 120
     for c in how["A"]:
         c.alignment = Alignment(wrap_text=True)
-    wb.save(out / "professor_check.xlsx")
+    wb.save(out / "random_check.xlsx")
     return rows
 
 
@@ -378,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
     out.mkdir(exist_ok=True)
     cols = ["pmid", "title", "year", "link", "stage", "outcome", "reason", "decided by", "evidence"]
     for name, rows in (("decisions.csv", final),
-                       ("for_professor.csv", [r for r in final if r["outcome"] == "for the professor"]),
+                       ("for_human_review.csv", [r for r in final if r["outcome"] == "for human review"]),
                        ("not_assessed.csv", [r for r in final if r["outcome"].startswith("not assessed")])):
         with (out / name).open("w", newline="") as fh:
             w = csv.DictWriter(fh, fieldnames=cols)
@@ -389,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
     table = stage_table(s)
     (out / "stage_table.md").write_text(table + "\n")
     figures(final, s, out)
-    professor_check(final, run_dir, out)
+    random_check(final, run_dir, out)
     for name, n in stage_files(final, run_dir, out).items():
         print(f"  {name}: {n} papers")
     print(table)
