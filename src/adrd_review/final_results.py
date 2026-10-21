@@ -4,7 +4,8 @@
     2. Abstracts       the panel (weighted majority), then the age rule (65+) on the abstract: excluded only when
                        the abstract clearly shows participants under 65 (age_check_abstract.csv)
     3. Full text       free full text only. The panel (majority), then the second look on papers it left unclear
-                       (second_look.csv), then the age rule (65+) on the full text (age_check.csv)
+                       (second_look.csv), then the age rule (65+) on the full text (age_check.csv), then the third
+                       look on what is still unsettled (third_look.csv, if present)
     4. Outcome         included / excluded at <stage> / for the professor / not assessed (no free full text)
 
 Inputs (all in the run folder): decisions.jsonl + in_progress.jsonl, second_look.csv, age_check.csv,
@@ -62,6 +63,7 @@ def build(run_dir: Path, free_found: Path | None = None) -> list[dict]:
     age_ft = _read(run_dir / "age_check.csv")
     age_ab = _read(run_dir / "age_check_abstract.csv")
     found = _read(free_found or run_dir / "free_fulltext_found.csv")
+    third = _read(run_dir / "third_look.csv")  # one more independent model on the papers left for the professor
 
     for stage_rows in (title, abstract, fulltext):
         for r in stage_rows.values():
@@ -128,9 +130,17 @@ def build(run_dir: Path, free_found: Path | None = None) -> list[dict]:
                 other = [r for r in _open_rules(s.get("rule marks", "")) if r != "I4"]
                 why = (f"rules unclear in the paper: {', '.join(names.get(r, r) for r in other)}" if other
                        else "the paper does not report the participants' age")
+            tl = third.get(pmid, {})
+            if tl.get("third look") in ("included", "excluded"):
+                reason = "all rules met" if tl["third look"] == "included" else tl["why"].split(":")[0]
+                out.append(rec | {"stage": "full text", "outcome": tl["third look"], "reason": reason,
+                                  "decided by": f"third look ({tl.get('model', '')}): {tl['why']}",
+                                  "evidence": tl.get("age quotes") or tl.get("quotes", "")})
+                continue
             out.append(rec | {"stage": "full text", "outcome": "for the professor", "reason": why,
-                              "decided by": "panel, second look and age check could not settle it",
-                              "evidence": s.get("reasoning", "")})
+                              "decided by": "panel, second look, age check" + (" and third look" if tl else "")
+                                            + " could not settle it",
+                              "evidence": tl.get("reasoning") or s.get("reasoning", "")})
     return out
 
 
@@ -228,6 +238,46 @@ def figures(final: list[dict], s: dict, out: Path) -> None:
     axes[0].invert_yaxis()
     fig.suptitle("Final: main reason for each exclusion", x=0.01, ha="left", fontweight="bold", fontsize=11, y=1.02)
     rf._save(fig, out, "final_reasons", data)
+
+
+def stage_files(final: list[dict], run_dir: Path, out: Path) -> dict[str, int]:
+    """Three CSVs, one per stage, listing every paper that reached it and what happened to it there:
+    stage1_titles.csv (all records), stage2_abstracts.csv (papers that passed titles, with the abstract),
+    stage3_fulltext.csv (papers that passed abstracts: included / excluded / for the professor / not assessed)."""
+    from adrd_review.eval.stages import load_states
+
+    states = {s["pmid"]: s for s in load_states(run_dir)}
+    base = ["pmid", "title", "year", "link"]
+
+    def write(name: str, rows: list[dict], cols: list[str]) -> int:
+        with (out / name).open("w", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(rows)
+        return len(rows)
+
+    t = [r | {"title decision": "excluded" if r["stage"] == "title" else "passed",
+              "reason": r["reason"] if r["stage"] == "title" else "",
+              "decided by": r["decided by"] if r["stage"] == "title" else "kept by at least one of the 3 reviewers",
+              "evidence": r["evidence"] if r["stage"] == "title" else ""} for r in final]
+    a = [r | {"abstract": (states.get(r["pmid"], {}).get("article") or {}).get("abstract", ""),
+              "abstract decision": "excluded" if r["stage"] == "abstract" and r["outcome"] == "excluded"
+              else ("not finished" if r["stage"] == "abstract" else "passed"),
+              "reason": r["reason"] if r["stage"] == "abstract" else "",
+              "decided by": r["decided by"] if r["stage"] == "abstract" else "panel majority (and no age under 65 stated)",
+              "evidence": r["evidence"] if r["stage"] == "abstract" else ""} for r in final if r["stage"] != "title"]
+    f = []
+    for r in final:
+        if r["stage"] != "full text":
+            continue
+        info = (states.get(r["pmid"], {}).get("fulltext_info") or {})
+        f.append(r | {"full-text outcome": r["outcome"], "full text source": info.get("source") or "",
+                      "counted": "no (side note)" if r["outcome"].startswith("not assessed") else "yes"})
+    return {"stage1_titles.csv": write("stage1_titles.csv", t, base + ["title decision", "reason", "decided by", "evidence"]),
+            "stage2_abstracts.csv": write("stage2_abstracts.csv", a, base + ["abstract decision", "reason", "decided by",
+                                                                          "evidence", "abstract"]),
+            "stage3_fulltext.csv": write("stage3_fulltext.csv", f, base + ["full-text outcome", "reason", "decided by",
+                                                                        "evidence", "full text source", "counted"])}
 
 
 CHECK_GROUPS = [("included", lambda r: r["outcome"] == "included"),
@@ -340,6 +390,8 @@ def main(argv: list[str] | None = None) -> int:
     (out / "stage_table.md").write_text(table + "\n")
     figures(final, s, out)
     professor_check(final, run_dir, out)
+    for name, n in stage_files(final, run_dir, out).items():
+        print(f"  {name}: {n} papers")
     print(table)
     print(f"\nSaved in {out}/")
     return 0

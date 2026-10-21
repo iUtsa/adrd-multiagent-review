@@ -464,3 +464,39 @@ def test_final_results_summary_counts_each_paper_once_and_keeps_paid_access_asid
     assert s["fulltext_free"]["assessed"] == 2 and s["fulltext_free"]["included"] == 1  # paid / by-hand not counted
     assert s["side_note"] == {"free_copy_to_save_by_hand": 1, "paid_access_not_assessed": 1}
     assert fr._failing_rule("I1 met · I3 NOT MET · E1 APPLIES", {"I1": "I1 x", "I3": "I3 y", "E1": "E1 z"}) == "I3 y"
+
+
+def test_third_look_needs_65_plus_and_every_other_rule_met():
+    from adrd_review import age_check as ac
+    from adrd_review import third_look as tl
+    from adrd_review.llm import LLMResult
+    from adrd_review.schemas import Usage
+
+    text = ("We trained a deep learning model on MRI to detect Alzheimer's disease. Participants were 400 adults "
+            "with a mean age of 74.2 years. This is an original study of human participants.")
+    paper = Article(pmid="5", title="Deep learning MRI for Alzheimer's disease", abstract="a", fulltext=text)
+    state = {"pmid": "5", "article": paper.model_dump()}
+
+    def stub(age, marks):
+        class Stub:
+            config = ModelConfig(provider="fake", model="stub")
+
+            def structured(self, schema, system, user, role):
+                if schema is ac.AgeAnswer:
+                    return LLMResult(age, Usage(role=role, model="fake:stub"))
+                ans = answer([(r, s, q) for r, s, q in marks if r.startswith("I")],
+                             [(r, s, q) for r, s, q in marks if r.startswith("E")])
+                return LLMResult(ans, Usage(role=role, model="fake:stub"))
+        return Stub()
+
+    met = [("I1", "met", "detect Alzheimer's disease"), ("I2", "met", "deep learning model"),
+           ("I3", "met", "to detect Alzheimer's disease"), ("I4", "unclear", None),
+           ("E1", "does_not_apply", None), ("E2", "does_not_apply", None), ("E3", "does_not_apply", None),
+           ("E4", "does_not_apply", None)]
+    age74 = ac.AgeAnswer(mean_age=ac.AgeFact(value=74.2, quote="a mean age of 74.2 years"))
+    assert tl.look(state, {}, "age", AIML, stub(age74, met))["third look"] == "included"
+    assert tl.look(state, {}, "age", AIML, stub(ac.AgeAnswer(), met))["third look"] == "for the professor"
+    # an earlier verified age check counts when this model finds no age
+    assert tl.look(state, {"I4 at 65": "met", "reason": "mean 70"}, "age", AIML, stub(ac.AgeAnswer(), met))["third look"] == "included"
+    not_ai = [m if m[0] != "I2" else ("I2", "not_met", "This is an original study of human participants") for m in met]
+    assert tl.look(state, {}, "age", AIML, stub(age74, not_ai))["third look"] == "excluded"

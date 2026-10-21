@@ -48,7 +48,7 @@ def main(argv: list[str]) -> int:
     (out / "charts").mkdir(parents=True, exist_ok=True)
     (out / "diagrams").mkdir(exist_ok=True)
 
-    for name in ("decisions.csv", "for_professor.csv", "not_assessed.csv", "summary.json", "professor_check.csv",
+    for name in ("stage1_titles.csv", "stage2_abstracts.csv", "stage3_fulltext.csv", "decisions.csv", "for_professor.csv", "not_assessed.csv", "summary.json", "professor_check.csv",
                  "professor_check_answer_key.csv", "professor_check.xlsx", "final_stages.png", "final_stages.csv",
                  "final_reasons.png", "final_reasons.csv"):
         dest = out / ("charts" if name.startswith("final_") else ".") / name
@@ -70,6 +70,12 @@ def main(argv: list[str]) -> int:
     slc = Counter(r["second look"] for r in sl)
     sl_inc, sl_exc, sl_total = slc.get("included", 0), slc.get("excluded", 0), len(sl)
     sl_settled = sl_inc + sl_exc
+    tl = list(csv.DictReader((run / "third_look.csv").open())) if (run / "third_look.csv").exists() else []
+    tlc = Counter(r["third look"] for r in tl)
+    third_li = (f"<li><b>Third look:</b> the papers still unsettled were re-read by one more independent model "
+                f"(DeepSeek V4.1 Flash, a family used nowhere else); it settled {tlc.get('included', 0) + tlc.get('excluded', 0)} "
+                f"of {len(tl)} (included {tlc.get('included', 0)}, excluded {tlc.get('excluded', 0)}); "
+                f"{sum('failed' in r['why'] for r in tl)} could not be re-read because the paid credit ran out.</li>") if tl else ""
 
     stage_rows = [["1. Titles", f"{t['screened']:,}", f"{t['excluded']:,}", f"{t['passed']:,}", "—"],
                   ["2. Abstracts", f"{a['screened']:,}", f"{a['excluded']:,}", f"{a['passed']:,}", "—"],
@@ -134,6 +140,7 @@ flagged). <b>Full text:</b> included only when all four inclusion rules are clea
 or left for you.</li>
 <li><b>Second look:</b> every paper the panel could not settle was re-read by a fourth, independent model, looking for the
 missing evidence; it settled {sl_settled} of {sl_total} (included {sl_inc}, excluded {sl_exc}).</li>
+{third_li}
 <li><b>Age (65+):</b> applied at the abstract stage (excluded only when the abstract clearly shows participants under 65)
 and at full text (a dedicated check reads each paper's age criterion, mean or median age and range, with quotes).</li>
 </ul>
@@ -165,7 +172,10 @@ hidden (and in <code>professor_check_answer_key.csv</code>). Comparing your deci
 estimate of how often it is right.</p>
 
 <h2>7. Files</h2>
-{table([[ '<code>decisions.csv</code>', 'Every paper: final stage, outcome, reason, who decided, evidence (quotes)'],
+{table([[ '<code>stage1_titles.csv</code>', f"All {t['screened']:,} records: title decision, and the reason and quotes for each exclusion"],
+        ['<code>stage2_abstracts.csv</code>', f"The {a['screened']:,} papers that passed titles, with the abstract: decision, reason, quotes"],
+        ['<code>stage3_fulltext.csv</code>', f"The {a['passed']:,} papers that passed abstracts: included / excluded / for your decision / not assessed, with reason and quotes"],
+        ['<code>decisions.csv</code>', 'Every paper: final stage, outcome, reason, who decided, evidence (quotes)'],
         ['<code>for_professor.csv</code>', f"The {f['for the professor']:,} papers that need your decision, with the reason"],
         ['<code>not_assessed.csv</code>', 'Papers without an assessable free full text (to save by hand, or paid access)'],
         ['<code>professor_check.xlsx</code> / <code>.csv</code>', 'The blind random check (40 papers)'],
@@ -181,6 +191,9 @@ estimate of how often it is right.</p>
         print(f"(PDF not made: {type(e).__name__})", file=sys.stderr)
     (out / "README.txt").write_text(
         "ADRD AI/ML screening results\n\nreport.pdf / report.html  the report\n"
+        "stage1_titles.csv         all records: title decision, reason, quotes\n"
+        "stage2_abstracts.csv      papers that passed titles: abstract decision, reason, quotes, abstract\n"
+        "stage3_fulltext.csv       papers that passed abstracts: full-text outcome, reason, quotes\n"
         "decisions.csv             every paper's final outcome, reason and evidence\n"
         "for_professor.csv         papers that need the professor's decision\n"
         "not_assessed.csv          papers without an assessable free full text\n"
