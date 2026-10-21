@@ -7,15 +7,23 @@ python -m adrd_review.preflight configs/runs/PROF_search_free.yaml     # keys, l
 scripts/run_until_done.sh configs/runs/PROF_search_free.yaml           # unattended: re-runs every 3 h until done
 tail -f data/logs/until_done_PROF_search_free.log                      # progress (flow counts after each try)
 python -m adrd_review.eval.flow data/runs/PROF_search_free/<latest>    # stage counts so far
+python -m adrd_review.eval.stages data/runs/PROF_search_free/<latest>  # every paper per stage + random sample to check
 ```
+
+## 0. Where it stands (2026-10-21)
+
+- **First full pass done** (try 6, 2026-10-21 09:10): all 1,855 papers through titles, abstracts and free full texts. Results: [ARCHITECTURE.md §8](ARCHITECTURE.md#8-results-of-the-first-full-pass-try-6-2026-10-21-free-full-text-only).
+- **What changed from the plan below:** Groq's paid tier was closed, so abstracts overflow to the **same models on OpenRouter** (paid, ~$1); NVIDIA withdrew Nemotron 3 Super (A now Nemotron 3 Ultra); NVIDIA's free Gemma timed out (B now on OpenRouter paid first); `inkling:free` was refused (C uses dots.3). All in [ARCHITECTURE.md §5.3](ARCHITECTURE.md#53-model-changes-during-the-run-for-the-methods-section).
+- **Loop:** 1 hour between tries (was 3), 6 papers at a time (was 3), daily limits fail fast, `caffeinate` while it runs. Diagram: [diagrams/run-loop.png](diagrams/run-loop.png); timeline: [diagrams/timeline.png](diagrams/timeline.png).
+- **The biggest delay was the Mac sleeping** with the lid closed (five nights), not the free limits.
 
 ## 1. What is free (checked 2026-10-11)
 
 | Source | Free limits | Status here | Used for |
 |---|---|---|---|
 | **Groq** | Per model: 30 requests/min, 1,000 requests/day, **8,000 tokens/min, 200,000 tokens/day** | Key in `.env` ✓ | Titles and abstracts (3 models) |
-| **NVIDIA NIM** (build.nvidia.com) | ~40 requests/min per account; about 1,000 free credits (5,000 on request) | Needs `NVIDIA_API_KEY` | Full text, reviewer A |
-| **OpenRouter** `:free` models | 20 requests/min; **50 requests/day per account**, 1,000/day after a one-time $10 top-up | Needs `OPENROUTER_API_KEY` | Full text, reviewers B and C |
+| **NVIDIA NIM** (build.nvidia.com) | ~40 requests/min per account; about 1,000 free credits (5,000 on request) | Key in `.env` ✓ (2026-10-16) | Full text, reviewer A |
+| **OpenRouter** `:free` models | 20 requests/min; **50 requests/day per account**, 1,000/day after a one-time $10 top-up | Key in `.env` ✓ (2026-10-16) | Full text, reviewers B and C |
 | Google AI Studio (personal Gmail) | Gemini Flash models free; limits only shown in the console; free-tier prompts may be used by Google | Not set up | Strongest free option if wanted |
 | Mistral (Experiment plan) | ~$10/month of credit; phone verification | Not set up | Possible extra |
 | GitHub Models | **Not available**: the endpoint now returns only "OK" (tested 2026-10-11) | – | – |

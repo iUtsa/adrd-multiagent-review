@@ -10,9 +10,19 @@ This project extends the earlier two-agent system (Extraction Agent + Annotation
 - a **Verifier** that checks every label against verbatim evidence,
 - a **versioned codebook** with a Curator agent for iterative criteria refinement.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design, diagrams and evaluation plan, and [docs/10_DAY_PLAN.md](docs/10_DAY_PLAN.md) for the build schedule.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system as built, its diagrams and results, and [docs/10_DAY_PLAN.md](docs/10_DAY_PLAN.md) for the build schedule.
+
+![System overview](docs/diagrams/system-overview.png)
 
 ## Status
+
+**2026-10-21 (final): 391 papers included** of 1,855 (older adults 65+, free full text only): titles 253 excluded, abstracts 420, full text 127; 185 await the professor (173 only on age reporting). Package for the professor: `scripts/make_report.py`; one row per paper: `python -m adrd_review.final_results`.
+
+**2026-10-21: first full pass of the professor's search done** (1,855 records; free model tiers + $2.34). Titles 1,855 → 1,602 passed; abstracts → 1,188 passed; free full texts 672 → **498 included**, 30 excluded, 120 left for a person (now getting a second look by an independent model). Free full text only: 516 paid-access papers are not assessed. Accuracy on this corpus awaits the professor's blind check. Details, diagrams and charts: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/diagrams/](docs/diagrams/README.md).
+
+![Papers at each stage](docs/diagrams/results/stage_outcomes.png)
+
+**Earlier status:**
 
 **All agents are built** (Days 1–8 of the [10-day plan](docs/10_DAY_PLAN.md)): PubMed tool, codebook, gold standard, frozen split, scorer, and every agent (triage, 3-reviewer panel, extraction, annotation, adjudicator, verifier, human review, Codebook Curator, debate) in one LangGraph pipeline covering E1–E4 and D. Everything runs today with a stand-in model. Models: **Gemini** (professor's licence), see [docs/MODELS.md](docs/MODELS.md). The analysis tools are built too (repeats, results table, figures, error analysis, reviewer weights, cost, retrieval check, PubMed Central full text, converter for the professor's file). **Next: real Gemini runs** once access is set up ([docs/RUNNING_EXPERIMENTS.md](docs/RUNNING_EXPERIMENTS.md)). **The gold standard and codebook are currently a public placeholder** (Cochrane dementia-screening decisions from CLEF 2017) until the professor's data arrives; see [docs/GOLD_STANDARD.md](docs/GOLD_STANDARD.md). Progress log: [docs/PROGRESS.md](docs/PROGRESS.md).
 
@@ -38,7 +48,8 @@ scripts/run_until_done.sh configs/runs/PROF_search_free.yaml            # the sa
 
 | File | What it covers |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Full system design, diagrams, evaluation plan |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | **The system as built**: pipeline, decision rules, models and hosts, run loop, outputs, results, evaluation plan |
+| [docs/diagrams/](docs/diagrams/README.md) | Every diagram (Mermaid sources) and result chart, and how to regenerate them |
 | [docs/10_DAY_PLAN.md](docs/10_DAY_PLAN.md) | Day-by-day build schedule |
 | [docs/PROGRESS.md](docs/PROGRESS.md) | What has been built and how it was checked |
 | [docs/TOOLS.md](docs/TOOLS.md) | How to use each tool (PubMed, ...) |
@@ -63,7 +74,7 @@ configs/
   splits/                 frozen calibration/test splits
 src/adrd_review/
   schemas.py              shared records: Article, answer forms, Vote, Decision, Usage
-  llm.py                  model factory (LangChain) + response cache
+  llm.py                  model factory (LangChain), response cache, limits, overflow hosts
   consensus.py            combine reviewers' votes; panel agreement
   human_review.py         answer paused decisions and finish a run
   curate.py               run the Codebook Curator on a calibration run
@@ -83,13 +94,16 @@ src/adrd_review/
   eval/metrics.py         P/R/F1, Cohen & Fleiss kappa, WSS, WSS@95, cost
   eval/score.py           score a predictions file against the gold standard
   eval/flow.py            articles through each stage (PRISMA flow + flow.png)
+  eval/stages.py          per-stage files + the professor's blind-check workbook
+  eval/report_figures.py  result charts for a run (docs/diagrams/results/)
+  second_look.py          independent re-read of papers left for a person
   eval/aggregate.py       results table over repeats   eval/figures.py  figures
   eval/errors.py          error-analysis sheet         eval/weights.py  reviewer weights
   eval/cost.py            cost estimate                eval/retrieval.py search recall
   convert_gold.py         convert the professor's spreadsheet
 data/                     gold standard, corpus, run outputs (git-ignored)
-scripts/                  build_placeholder_gold.py, score_baselines.py, render_prompts.py, check_ollama.py
+scripts/                  run_until_done.sh, build_placeholder_gold.py, score_baselines.py, render_prompts.py, check_ollama.py
 notebooks/                analysis
 tests/                    pytest tests (+ fixtures/)
-docs/                     design, plan, progress, tool docs
+docs/                     design, plan, progress, tool docs; docs/diagrams/ diagrams + charts
 ```

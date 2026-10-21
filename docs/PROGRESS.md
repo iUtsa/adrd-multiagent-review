@@ -4,6 +4,95 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-10-21 (evening) — Final cleaned result, 65+ throughout; package for the professor
+
+**Final result** (`data/runs/PROF_search_free/20261021-141010/final/`, built by `python -m adrd_review.final_results`): one outcome and one reason per paper, in the human team's order: titles (panel) → abstracts (panel, then the 65+ age rule on the abstract) → free full text (panel → second look → 65+ age check) → included / excluded / for the professor.
+
+| Stage | In | Excluded | Passed / included | For the professor |
+|---|---|---|---|---|
+| 1. Titles | 1,855 | 253 | 1,602 | — |
+| 2. Abstracts | 1,602 | 420 | 1,182 | — |
+| 3. Full text (free) | 709 | 127 | **391** | 185 (+6 not finished) |
+
+Not counted: 163 free copies still to save by hand; 310 paid access only. For the professor: 98 papers do not report age, 75 cannot be confirmed 65+, 12 have other rules unclear (one age policy decision settles 173). Paid calls in total: $8.80 (OpenRouter); everything else free.
+
+**Abstract-stage age rule** (`age_check.py --stage abstract`): Nemotron 3 Ultra on the 337 abstracts that state an age (851 state none and pass without a call); excluded only when the abstract clearly shows under 65 with a quoted number: 7 papers, 1 of which is kept because its full text confirms 65+ (the abstract's number was a younger subgroup). Age reading is strict: with ages only per group, the youngest group's mean is used (noted for the professor).
+
+**Package** (`scripts/make_report.py` → `data/deliverables/2026-10-21_ADRD_screening_results/`, git-ignored): report.pdf/.html, decisions.csv, for_professor.csv, not_assessed.csv, the blind random check (professor_check.xlsx: 40 papers, 10 included + 10 excluded per stage, AI columns hidden; answer key separate), charts and diagrams.
+
+**Tests: 157 pass.**
+
+---
+
+## 2026-10-21 — First full pass done; second look at the papers left for a person
+
+**Try 6 (finished 09:10, `data/runs/PROF_search_free/20261021-112117/`), free full text only:** titles 1,855 → 1,602 passed (253 excluded); abstracts 1,602 → 1,188 passed (414 excluded, 224 of them 2-to-1 and flagged); full text 672 free papers → **498 included**, 30 excluded, 120 left for a person, 24 to retry. Side note: 516 paid-access papers found, not assessed (Utsa: free full text only, in every count and accuracy measure). Panel agreement (Fleiss κ): titles 0.40, abstracts 0.56, full text 0.43. OpenRouter spent $2.34.
+
+**Changes today:**
+- Reviewer B full text: Gemma 4 31B via OpenRouter (paid, ~$0.003/paper) first, NVIDIA as overflow: NVIDIA's free Gemma timed out on most calls (~2 min for "OK").
+- OpenAI-compatible clients: no hidden client retries (`max_retries=0`); one hung request had blocked a run ~30 min.
+- `caffeinate -i` while the loop runs (idle sleep on battery stopped the run 14:51-15:08 on 2026-10-20).
+- The professor's random sample excludes paid-access papers.
+
+**Second look** (`src/adrd_review/second_look.py`, Utsa: double-check every paper left for a person before the final result): an independent model, GLM-5.3 (Z.ai; OpenRouter, paid ~$0.004/paper, NVIDIA free copy as overflow), re-reads the same full text, told which rules the panel left open (not the panel's votes), with the same per-rule form, quote check and decision rule as a full-text reviewer: include / exclude / still for the professor. Written to `<run>/second_look.csv`; the run's own decisions are not changed.
+
+**Age rule corrected to 65+ (2026-10-21):** Utsa confirmed the professor's rule is 65 or over (email 2026-10-07); the 60+ record of 2026-10-08 was wrong. Because the codebook text is in every reviewer prompt, changing it would re-judge all 1,855 papers; age only decides at full text, so a dedicated **age check** (`age_check.py`) re-applies I4 at 65 to every paper included or left for a person: a free model (Nemotron 3 Ultra, NVIDIA) extracts the age criterion, youngest/oldest and mean/median age with quotes; quotes are verified; a fixed rule decides met (criterion/youngest/mean or median ≥65) / not met (mean or median <65, or oldest <65) / unclear. Included papers with I4 not met become excluded; papers left for a person only on age become included or excluded. Pilot: ~90 s per paper.
+
+**More free full texts (2026-10-21):** of the 516 papers without a fetched full text, 98 had a free copy Europe PMC could not download. `scripts/fetch_free_fulltext.py` looks up every legal open-access copy in OpenAlex (repositories, author manuscripts, preprints), downloads it with an honest User-Agent and keeps it only if it is the right paper (PDF quality check + ≥70% of title words): **43 downloaded** (16 arXiv, 8 Amsterdam UMC repository, bioRxiv, medRxiv, university repositories; 23 are preprints), **163 free but behind pages that block scripts** (listed in `<run>/save_by_hand.xlsx` for a person), **310 no free copy**. No paywall or bot protection is bypassed. Try 7 read the 43 (done 10:34; 6 papers still open).
+
+**Second look cost:** OpenRouter billed $7.07 in total by 10:00 (second look ~$3.90: GLM-5.3 bills long reasoning). Second look on try 6: 9 included, 15 excluded (mostly MCI-only studies), 96 still for the professor (84 only on age).
+
+**Architecture docs, diagrams and charts updated (2026-10-21):** [ARCHITECTURE.md](ARCHITECTURE.md) rewritten as built (v1.0): pipeline path and the complete graph exported from LangGraph, decision rules per stage, models and hosts with every change during the run, unattended loop, outputs, results, evaluation plan. Nine Mermaid diagrams with sources (`docs/diagrams/src/`), rendered with mermaid-cli; nine result charts + CSVs from the run (`eval/report_figures.py`, validated colour-blind-safe palette). The v0.3 design diagrams moved to `docs/diagrams/design-v0.3/`. Index: [diagrams/README.md](diagrams/README.md). Build doc: [agents/second-look.md](agents/second-look.md).
+
+**Tests: 155 pass.**
+
+---
+
+## 2026-10-20 — First complete stage files; decisions to finish faster
+
+**Counts after try 13** (`data/runs/PROF_search_free/20261018-174229/stages/`): titles 1,855 → 1,602 passed; abstracts 744 judged (220 excluded, 524 passed), 858 waiting; full text 62 included, 3 excluded, 37 for a person, 207 open, 215 without a free full text.
+
+**Decisions (Utsa):**
+- **Free full text only.** Papers whose full text needs a subscription are not used (left out as "not retrieved", reported as such in the PRISMA flow). 215 so far.
+- **$10 OpenRouter credit** (Utsa adds it): lifts reviewer C's free model limit from 50 to 1,000 requests/day and pays for the abstract overflow below.
+- Groq's paid tier is closed ("temporarily unavailable due to high demand").
+
+**Changes:**
+- **Reviewer A, full text:** `nvidia/nemotron-3-super-120b-a12b` stopped working (NVIDIA: 404 "Function not found", also via OpenRouter) after judging 175 full texts. Replaced by `nvidia/nemotron-3-ultra-550b-a55b`, the larger model of the same generation (answers in ~1 s; passed preflight). *Correction (2026-10-21):* those 175 answers were **not** reused: the cache key includes the model, so Ultra re-read all 648 full texts, and every A full-text vote is from Ultra.
+- **Abstract overflow** (`ModelConfig.overflow`, `OverflowLLM`): once a Groq model's daily limit is used up, the same model is called on OpenRouter (paid; ~$1-3 for all remaining abstracts). Answers cached from either host are reused first, so no batch is judged twice; no credit at the overflow host only defers the batch (it never stops the run). The overflow host is also used when Groq's per-minute budget is busy (8,000 tokens/min fits about one abstract batch) or Groq keeps asking to wait over 20 s, so both hosts work side by side. First check (2026-10-20 11:00): ~$0.001 per batch call, abstracts ~4/min. Prices in `configs/prices.yaml`; preflight tests overflow hosts as warnings.
+- **Faster loop:** 1 h between tries (was 3 h); 6 articles at a time (was 3). Loop restarted 2026-10-20 10:5x; its tries count from 1 again.
+
+**Age (I4) drives the person-decides cases:** 22 of the 37 are open only because a paper does not report age clearly; I4 is the rule most often marked unclear (82 votes, vs at most 11 for any other). To ask the professor: does an unreported age, or a dataset of older adults such as ADNI or NACC, count as 60+?
+
+**Tests: 152 pass.**
+
+---
+
+## 2026-10-17 — Full-text keys, reviewer C's model, stage files for checking
+
+**Keys:** NVIDIA and OpenRouter keys added to `.env` (2026-10-16); both answered a test call. Full text starts with try 11.
+
+**Reviewer C's full-text model:** `thinkingmachines/inkling:free` is now refused for direct API calls (OpenRouter allows it only in agent apps, 403). Replaced by `dots-studio/dots-3-note-preview:free` (512k context, structured output; passed preflight). C had not read any full paper yet, so no results are mixed.
+
+**Reviewer B's full-text model moved to NVIDIA (same model):** on OpenRouter's free pool every `google/gemma-4-31b-it:free` call was rate limited (try 11: 42 papers failed, 0 B answers), so no paper could finish full text. NVIDIA hosts the same `google/gemma-4-31b-it`; it passed preflight but answers slowly (~2 min per call). Its retries also used up OpenRouter's 50 free requests/day, which reviewer C (dots) now has to itself. Try 11 stopped early (15:32; everything cached) and try 12 started with the change.
+
+**OpenRouter's daily limit now fails fast:** its 429 gives a reset time (`X-RateLimit-Reset`, ms) instead of Groq's 'try again in ...', so each paper retried 5 times (~2.5 min) before failing. `retry_after_seconds` now reads the reset time, so the model is marked used up until then and its papers are skipped at once. Try 12 stopped at 13:42 on 2026-10-18 (paper 330 of 829; all answers cached); try 13 started with the fix.
+
+**Overnight pause:** the Mac slept with the lid closed, and `sleep` in `run_until_done.sh` does not count sleep time, so try 11 started only on 2026-10-17 10:59. `caffeinate -s` now keeps the Mac awake while the run is going (plugged in only).
+
+**Abstract counts so far (after try 10):** 508 of 1,602 abstracts screened, 134 excluded, 374 passed. The flow printed 281 screened, because papers that passed abstracts but waited for the full-text keys were counted as open. Of the 374: 227 have a free full text, 147 have none (`pdfs_needed.csv`).
+
+**Stage files for checking** (`eval/stages.py`, written by every run into `<run>/stages/`):
+- `1_title.csv`, `2_abstract.csv`, `3_fulltext.csv`, `4_included.csv`: every finished paper at that stage with its outcome, main reason, each reviewer's vote, rule marks, quotes and reasoning. Row counts match the flow.
+- `stages.xlsx`: the same as sheets, plus `random sample` (up to 5 excluded and 5 passed per stage, fixed seed, so the same draw can be repeated) and `how to check`.
+- Blind check: the paper and empty `prof_decision` / `prof_rule` / `prof_notes` columns come first; the AI's columns are hidden until unhidden.
+- Re-run on any run folder: `python -m adrd_review.eval.stages <run dir> [--sample N --seed S]`.
+- **Papers still open are included:** the runner now keeps what an article finished before it was put on hold (`in_progress.jsonl`, same format as `decisions.jsonl`): its title decision, and its abstract decision if made. The stage files list it at each finished stage and as `still open` where it waits. Before this, a paper waiting for full text was missing from the title and abstract files too. Takes effect from the next try (try 11 started with the old code).
+
+**Tests: 150 pass.**
+
+---
+
 ## 2026-10-11 — Free tiers only; batch screening; unattended multi-day runs
 
 Decision (Utsa): use free model APIs (OpenRouter, Groq and others), even if slow. Details: [FREE_MODELS.md](FREE_MODELS.md).
@@ -72,6 +161,8 @@ Gemini on hold. Anthropic and OpenAI keys added to `.env`. **The OpenAI account 
 ---
 
 ## 2026-10-08 (later) — Older adults 60+; papers without full text left out
+
+> **Correction (2026-10-21):** the professor's age rule is **65 or over** (her email of 2026-10-07, confirmed by Utsa). The 60+ below was recorded wrongly. The run's prompts kept 60+ (changing them would re-judge everything); 65+ is applied at full text by the age check (`src/adrd_review/age_check.py`).
 
 The professor sent the review's age groups (young adult 20–39, adult/middle age 40–59, **older adult 60+**). She also said papers without obtainable full text need not all be covered ("whatever we can pass through"). Gemini access is on the way.
 

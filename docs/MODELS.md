@@ -2,7 +2,18 @@
 
 **Constraint (2026-09-30): the professor has provided a Gemini licence.** Everything in the plan runs on Gemini. One free non-Google provider (Groq) is optional and only adds an experiment; nothing depends on it.
 
-## Now (2026-10-11): free tiers only
+## Now (2026-10-21): free tiers + a $10 OpenRouter credit
+
+| Role | Titles + abstracts | Full text |
+|---|---|---|
+| Reviewer A (neurologist) | Groq `gpt-oss-120b` → same model on OpenRouter when Groq is busy | NVIDIA **Nemotron 3 Ultra 550B** (all 648 full texts) |
+| Reviewer B (ML researcher) | Groq `qwen3.8-27b` → OpenRouter | **Gemma 4 31B**: OpenRouter paid first, NVIDIA free as overflow |
+| Reviewer C (methodologist) | Groq `gpt-oss-20b` → OpenRouter | OpenRouter free **dots.3 note preview** (1,000/day after the credit) |
+| Second look | — | **GLM-5.3**: OpenRouter paid first, NVIDIA free as overflow |
+
+Total billed for the professor's 1,855 papers: **$2.34** (plus the second look, ~$0.50). Every model change during the run, and its effect, is listed in [ARCHITECTURE.md §5.3](ARCHITECTURE.md#53-model-changes-during-the-run-for-the-methods-section); diagram: [diagrams/model-routing.png](diagrams/model-routing.png).
+
+## Earlier (2026-10-11): free tiers only
 
 Paid accounts have no credit, so the run uses free tiers: Groq for titles and abstracts, NVIDIA NIM and OpenRouter free models for full papers. Plan, limits, keys and timing: **[FREE_MODELS.md](FREE_MODELS.md)**. The paid configs below are kept for when credit is added.
 

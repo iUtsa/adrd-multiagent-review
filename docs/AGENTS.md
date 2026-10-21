@@ -8,6 +8,8 @@ How the agents are built (LangChain), wired together (LangGraph), and run. **All
 
 ## The pipeline
 
+**As built and run (2026-10-21):** see [ARCHITECTURE.md §3](ARCHITECTURE.md#3-the-pipeline-in-langgraph) for the path the professor's free run takes ([diagram](diagrams/pipeline-as-run.png)) and the complete graph exported from the code ([diagram](diagrams/langgraph-full.png)). Three-stage runs add `title_reviewer → title_consensus` before triage and `get_fulltext → elig_reviewer × N → elig_consensus → elig_checks` after screening; with `title_batch`/`abstract_batch` the title and abstract answers come from batch calls made before the graph runs. The outline below is the original single-stage graph.
+
 ```
 START -> triage -> [screen_reviewer x N] -> screen_consensus
    -> (split, debate rounds left) screen_debate -> screen_consensus ...
@@ -50,12 +52,17 @@ Answer forms: `src/adrd_review/schemas.py`. The field descriptions there are sen
 | `google` | `ChatGoogleGenerativeAI` (AI Studio key, or Vertex AI via `extra`) | `GOOGLE_API_KEY` |
 | `anthropic` | `ChatAnthropic` | `ANTHROPIC_API_KEY` |
 | `openai` | `ChatOpenAI` | `OPENAI_API_KEY` |
-| `openrouter` (open-weights models) | `ChatOpenAI` via openrouter.ai | `OPENROUTER_API_KEY` |
+| `openrouter` (open-weights models; free models + paid; **key set, $10 credit**) | `ChatOpenAI` via openrouter.ai | `OPENROUTER_API_KEY` |
 | `groq` (open-weights models, free tier; **key set**) | `ChatOpenAI` via api.groq.com | `GROQ_API_KEY` |
+| `nvidia` (NVIDIA NIM, free tier; **key set**) | `ChatOpenAI` via integrate.api.nvidia.com | `NVIDIA_API_KEY` |
+| `mistral` | `ChatOpenAI` via api.mistral.ai | `MISTRAL_API_KEY` |
 | `ollama` (local, on standby) | `ChatOllama` | none |
 | `fake` | keyword rules, no AI | none |
 
-Built-in behaviour:
+Built-in behaviour (details and diagram: [ARCHITECTURE.md §5-§6](ARCHITECTURE.md#5-models-hosts-and-limits)):
+- **Overflow host** (`overflow:` in a model config, `OverflowLLM`): the same model at a second host, used when the first is busy (per-minute budget, a wait over 20 s, daily limit, or failure). Cached answers from either host are reused first, so nothing is judged twice; no credit at the overflow host only defers the call.
+- **Fail fast on daily limits:** the reset time is read from the provider's error (Groq "try again in …", OpenRouter `X-RateLimit-Reset`); the model is marked used up until then (`LimitReached`) and its papers are skipped, not retried.
+- **No hidden client retries** (`max_retries=0` for OpenAI-compatible hosts): our own loop retries, switches host or defers.
 - **Structured output.** Uses LangChain's `with_structured_output`, so the model must return the answer form; a malformed answer is retried (3 attempts in total).
 - **Response cache** (`data/cache/llm/`). The key is a hash of provider, model, temperature, max tokens, answer form, system prompt and article. An identical request is answered from disk for free. Any change to the prompt, codebook or model makes a new request.
 - **Rate limit** per model (`requests_per_minute`), to stay under free-tier limits.

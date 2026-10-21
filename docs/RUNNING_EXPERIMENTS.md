@@ -47,6 +47,18 @@ ARTICLES THROUGH EACH STAGE (PRISMA flow)
 
 Real counts for the 1,855 need Gemini: about $96 at most and ~6.5 hours (`python -m adrd_review.preflight configs/runs/PROF_search_gemini.yaml`); try `--limit 100` first (≈ $5).
 
+## The professor's search on free tiers (the run used so far)
+
+```bash
+python -m adrd_review.preflight configs/runs/PROF_search_free.yaml        # keys, live calls (incl. overflow hosts), days
+scripts/run_until_done.sh configs/runs/PROF_search_free.yaml              # unattended, 1 h between tries, until none open
+python -m adrd_review.eval.stages data/runs/PROF_search_free/<latest>      # per-stage files + blind-check workbook
+python -m adrd_review.second_look data/runs/PROF_search_free/<latest>      # re-read papers left for a person
+python -m adrd_review.eval.report_figures data/runs/PROF_search_free/<latest> --out docs/diagrams/results --billed <USD>
+```
+
+Free full text only: papers without a free copy are recorded as not retrieved and are in no count or accuracy measure. How it works: [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Before every real run: preflight
 
 ```bash

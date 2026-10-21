@@ -17,8 +17,9 @@ One document per agent. Every agent added to the system gets a document here, wr
 | Human review (+ screening safety rule) | 5. Verification | Built (Day 7) | [human-review.md](human-review.md) | (a person, not a model) |
 | Codebook Curator | 0. Protocol | Built (Day 7) | [codebook-curator.md](codebook-curator.md) | [prompts/curator.md](prompts/curator.md) |
 | Debate (variant D) | 3. Consensus | Built (Day 8) | [debate.md](debate.md) | [prompts/debate.md](prompts/debate.md) |
+| **Second look** (re-reads papers left for a person) | After full text, before the professor | Built (2026-10-21) | [second-look.md](second-look.md) | eligibility prompt + second-look persona |
 
-**All planned agents are built.** How to run the experiments: [../RUNNING_EXPERIMENTS.md](../RUNNING_EXPERIMENTS.md).
+**All planned agents are built.** Which ones the professor's free run uses, and how they connect: [../ARCHITECTURE.md](../ARCHITECTURE.md) (diagrams in [../diagrams/](../diagrams/README.md)). How to run the experiments: [../RUNNING_EXPERIMENTS.md](../RUNNING_EXPERIMENTS.md).
 
 The `prompts/` pages are **generated** from the live code and codebook by `python scripts/render_prompts.py`, so they always show exactly what the model receives. Re-run it after changing an agent, persona or the codebook.
 
