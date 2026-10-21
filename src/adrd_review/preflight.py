@@ -148,6 +148,16 @@ def check(config_path: str, part: str | None = None, limit: int | None = None, c
                 rep.add("PASS", f"{m.label}: answered a structured test call")
             except Exception as e:
                 rep.add("FAIL", f"{m.label}: test call failed: {str(e)[:160]}")
+            if m.overflow is not None:  # optional: without it, calls past the daily limit simply wait
+                o = m.overflow
+                try:
+                    llm = LangChainLLM(o.model_copy(update={"max_tokens": 600}), cache=ResponseCache(None), max_attempts=1)
+                    llm.stops_run_without_credit = False
+                    llm.structured(Ping, "Reply with ok = true.", "Are you there?", role="preflight")
+                    rep.add("PASS", f"{o.label}: overflow for {m.label} answered a structured test call")
+                except Exception as e:
+                    rep.add("WARN", f"{o.label}: overflow for {m.label} not usable yet, so calls past the daily limit "
+                                    f"wait: {str(e)[:120]}")
     else:
         rep.add("WARN", "model test calls skipped (--no-calls)")
 

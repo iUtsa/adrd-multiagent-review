@@ -55,6 +55,10 @@ class ModelConfig(BaseModel):
     # on Vertex AI: {vertexai: true, project: my-gcp-project, location: us-central1},
     # or {thinking_budget: 0} to turn off Gemini's thinking step.
     extra: dict[str, Any] = {}
+    # The same model at another host, called only once this one's daily limit is used up (e.g. Groq's free
+    # tier -> OpenRouter, paid per token). An answer already cached from either host is reused, so a request is
+    # never judged twice. Not part of the cache key.
+    overflow: ModelConfig | None = None
 
     @property
     def label(self) -> str:
@@ -194,6 +198,15 @@ class RateLimiter:
             time.sleep(max(0.1, pause))
         time.sleep(max(0.0, pause))
 
+    def expected_wait(self, tokens: float = 0) -> float:
+        """Seconds wait() would pause for a call of this size now (nothing is reserved)."""
+        with self._lock:
+            now = time.monotonic()
+            used = [(t, n) for t, n in self._used if now - t < 60]
+            if self.tpm and used and sum(n for _, n in used) + tokens > self.tpm:
+                return 60 - (now - used[0][0])
+            return max(0.0, self._next - now)
+
     def record(self, estimated: float, actual: float) -> None:
         """Correct the budget once the real token count is known."""
         with self._lock:
@@ -216,13 +229,18 @@ def shared_limiter(config: "ModelConfig") -> RateLimiter:
 
 
 def retry_after_seconds(error: Exception) -> float | None:
-    """Seconds a provider asked us to wait ('Please try again in 1m12.5s'), if it said."""
+    """Seconds a provider asked us to wait, if it said: 'Please try again in 1m12.5s' (Groq), or a reset time
+    'X-RateLimit-Reset': '1792368000000' in ms since 1970 (OpenRouter's free-models-per-day limit)."""
     import re
 
     m = re.search(r"try again in (?:(\d+)h)?(?:(\d+)m)?([\d.]+)s", str(error))
-    if not m:
-        return None
-    return int(m.group(1) or 0) * 3600 + int(m.group(2) or 0) * 60 + float(m.group(3))
+    if m:
+        return int(m.group(1) or 0) * 3600 + int(m.group(2) or 0) * 60 + float(m.group(3))
+    m = re.search(r"X-RateLimit-Reset['\"]?\s*:\s*['\"]?(\d{10,13})", str(error), re.IGNORECASE)
+    if m:
+        reset = int(m.group(1)) / (1000 if len(m.group(1)) == 13 else 1)
+        return max(0.0, reset - time.time())
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -256,7 +274,9 @@ def make_chat_model(config: ModelConfig):
         if p in hosts:
             url, env = hosts[p]
             kw = {"base_url": url, "api_key": os.getenv(env), **kw}
-        return ChatOpenAI(**kw, max_tokens=config.max_tokens)
+        # No hidden retries inside the client (our loop retries, switches host, or defers): with the client's
+        # default 2 retries of up to 10 min each, one hung request blocked a run for ~30 min (2026-10-20).
+        return ChatOpenAI(**{"max_retries": 0, **kw}, max_tokens=config.max_tokens)
     if p == "ollama":
         from langchain_ollama import ChatOllama
 
@@ -273,6 +293,8 @@ class LangChainLLM:
         max_attempts: int = 5,
         namespace: str = "",
     ):
+        self.stops_run_without_credit = True  # False for an overflow host: no credit there only defers its calls
+        self.max_rate_wait: float | None = None  # longest rate-limit wait before giving up (None: env, default 600 s)
         self.namespace = namespace
         self.config = config
         self.chat = chat_model if chat_model is not None else make_chat_model(config)
@@ -293,6 +315,9 @@ class LangChainLLM:
         read = p.get("cache_read", 0.1 * p["input"])
         write = p.get("cache_write", 1.25 * p["input"])
         return (fresh * p["input"] + cache_read * read + cache_write * write + tokens_out * p["output"]) / 1e6
+
+    def estimate(self, system: str, user: str) -> float:
+        return (len(system) + len(user)) / 4 + (self.config.max_tokens or 1000) / 2
 
     def structured(self, schema: type[T], system: str, user: str, role: str) -> LLMResult[T]:
         key = ResponseCache.key(self.config, schema, system, user, self.namespace)
@@ -320,7 +345,7 @@ class LangChainLLM:
             sys_msg = SystemMessage(content=system)
         messages = [sys_msg, HumanMessage(content=user)]
         # Rough size of this call, for the tokens-per-minute budget (corrected after the call).
-        estimate = (len(system) + len(user)) / 4 + (self.config.max_tokens or 1000) / 2
+        estimate = self.estimate(system, user)
         last_error: Any = None
         until = EXHAUSTED.get(self.config.label)
         if until and time.time() < until:
@@ -333,7 +358,8 @@ class LangChainLLM:
             except Exception as e:  # network, rate limit, provider error, invalid tool call
                 last_error = e
                 if is_out_of_credit(e):
-                    OUT_OF_CREDIT.set()
+                    if self.stops_run_without_credit:
+                        OUT_OF_CREDIT.set()
                     raise OutOfCredit(f"{self.config.label}: the account is out of credit ({e})") from e
                 if attempt == self.max_attempts:
                     break
@@ -344,7 +370,8 @@ class LangChainLLM:
                     # A long wait means a daily limit. By default give up on this call (the run can be
                     # resumed later from the cache). ADRD_MAX_RATE_WAIT_SECONDS raises the patience for
                     # unattended runs that should simply wait for the provider's budget to refill.
-                    patience = float(os.getenv("ADRD_MAX_RATE_WAIT_SECONDS", "600"))
+                    patience = self.max_rate_wait if self.max_rate_wait is not None else float(
+                        os.getenv("ADRD_MAX_RATE_WAIT_SECONDS", "600"))
                     if asked is not None and asked > patience:
                         EXHAUSTED[self.config.label] = time.time() + asked
                         raise LimitReached(f"{self.config.label}: limit reached; resets in ~{asked / 3600:.1f} h ({e})") from e
@@ -401,6 +428,55 @@ class FakeLLM:
         return LLMResult(parsed, Usage(role=role, model=self.config.label, input_tokens=tokens_in, output_tokens=50))
 
 
+def _from_cache(llm, schema, system: str, user: str, role: str) -> LLMResult | None:
+    cache = getattr(llm, "cache", None)
+    if cache is None:
+        return None
+    hit = cache.get(ResponseCache.key(llm.config, schema, system, user, getattr(llm, "namespace", "")))
+    if hit is None:
+        return None
+    usage = Usage.model_validate(hit["usage"])
+    usage.role, usage.cached, usage.seconds = role, True, 0.0
+    return LLMResult(schema.model_validate(hit["parsed"]), usage)
+
+
+class OverflowLLM:
+    """A model with a second host for the same model (ModelConfig.overflow): the second is called only when the
+    first fails (its limit is used up, or it keeps asking to wait). Cached answers from either are reused first, so nothing is judged twice. If the
+    second host fails too (no credit, its own limit), the call is deferred like any used-up limit."""
+
+    OVERFLOW_AFTER_SECONDS = 20  # a longer rate-limit wait at the first host goes to the overflow host instead
+
+    def __init__(self, primary, backup):
+        self.primary, self.backup, self.config = primary, backup, primary.config
+        if hasattr(primary, "max_rate_wait"):
+            primary.max_rate_wait = self.OVERFLOW_AFTER_SECONDS
+
+    def structured(self, schema: type[T], system: str, user: str, role: str) -> LLMResult[T]:
+        for llm in (self.primary, self.backup):
+            if (hit := _from_cache(llm, schema, system, user, role)) is not None:
+                return hit
+        # The first host's per-minute budget is busy (e.g. Groq's free 8,000 tokens/min fits about one abstract
+        # batch): rather than queue, this call goes to the overflow host, so both hosts work side by side.
+        limiter = getattr(self.primary, "limiter", None)
+        if limiter is not None and EXHAUSTED.get(self.backup.config.label, 0) < time.time() and \
+                limiter.expected_wait(self.primary.estimate(system, user)) > self.OVERFLOW_AFTER_SECONDS:
+            try:
+                return self.backup.structured(schema, system, user, role)
+            except LLMError as e:
+                if is_out_of_credit(e) or "402" in str(e):
+                    EXHAUSTED.setdefault(self.backup.config.label, time.time() + 3600)
+        try:
+            return self.primary.structured(schema, system, user, role)
+        except LLMError as first:  # limit used up, or repeated short rate limits / errors: same model, other host
+            try:
+                return self.backup.structured(schema, system, user, role)
+            except LLMError as e:
+                if is_out_of_credit(e) or "402" in str(e):  # no credit at the overflow host: stop trying it for now
+                    EXHAUSTED.setdefault(self.backup.config.label, time.time() + 3600)
+                raise LimitReached(f"{first}; overflow {self.backup.config.label} failed too: {str(e)[:200]}") from e
+
+
 KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "openrouter": "OPENROUTER_API_KEY",
            "groq": "GROQ_API_KEY", "nvidia": "NVIDIA_API_KEY", "mistral": "MISTRAL_API_KEY"}
 
@@ -433,6 +509,11 @@ class MissingKeyLLM:
 
 def build_llm(config: ModelConfig, cache_dir: str | Path | None = None, codebook=None, namespace: str = "") -> LLM:
     """`namespace` separates cache entries, e.g. per repeat, so repeats call the model again."""
+    if config.overflow is not None:
+        backup = build_llm(config.overflow, cache_dir, codebook, namespace)
+        if isinstance(backup, LangChainLLM):
+            backup.stops_run_without_credit = False
+        return OverflowLLM(build_llm(config.model_copy(update={"overflow": None}), cache_dir, codebook, namespace), backup)
     env = KEY_ENV.get(config.provider)
     if env and not os.getenv(env) and not config.extra.get("api_key"):
         cache = ResponseCache(cache_dir)

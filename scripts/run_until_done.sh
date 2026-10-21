@@ -6,7 +6,7 @@
 #   scripts/run_until_done.sh configs/runs/PROF_search_free.yaml            # all articles
 #   scripts/run_until_done.sh configs/runs/PROF_search_free.yaml --sample 100
 #
-# Settings (environment variables): TRIES (default 240), SLEEP_SECONDS between tries (default 10800 = 3 h).
+# Settings (environment variables): TRIES (default 240), SLEEP_SECONDS between tries (default 3600 = 1 h).
 # Log: data/logs/until_done_<name>.log. Progress: python -m adrd_review.eval.flow <latest run folder>
 # Stop it with:  pkill -f run_until_done.sh ; pkill -f "adrd_review.graph.runner"
 cd "$(dirname "$0")/.." || exit 1
@@ -14,7 +14,7 @@ CONFIG="$1"; shift
 NAME="$(basename "$CONFIG" .yaml)"
 LOG="data/logs/until_done_${NAME}.log"
 TRIES="${TRIES:-240}"
-SLEEP_SECONDS="${SLEEP_SECONDS:-10800}"
+SLEEP_SECONDS="${SLEEP_SECONDS:-3600}"
 mkdir -p data/logs
 for try in $(seq 1 "$TRIES"); do
   echo "=== try $try: $(date '+%Y-%m-%d %H:%M') ===" >> "$LOG"

@@ -165,3 +165,21 @@ def test_convert_reports_missing_columns(tmp_path):
     mapping = {"file": str(src), "id": {"pmid": "PMID"}, "screening": {"column": "Final decision", "values": {}}}
     _, problems, _ = convert(mapping)
     assert any("'PMID' not in file" in p for p in problems)
+
+
+def test_report_figures_write_png_and_csv_and_read_the_loop_log(tmp_path):
+    from adrd_review.eval import report_figures
+
+    rows = {"title": [{"ai_outcome": "passed"}] * 3 + [{"ai_outcome": "excluded"}],
+            "abstract": [{"ai_outcome": "passed"}] * 2 + [{"ai_outcome": "excluded"}],
+            "fulltext": [{"ai_outcome": "passed"}, {"ai_outcome": "waiting for a person"}, {"ai_outcome": "not retrieved"}],
+            "included": []}
+    png = report_figures.stage_outcomes(rows, tmp_path)
+    assert png.exists() and png.stat().st_size > 1000
+    csv_rows = (tmp_path / "stage_outcomes.csv").read_text()
+    assert "Full text (free),Included,1" in csv_rows and "not retrieved" not in csv_rows.lower()  # paid access never charted
+    log = tmp_path / "loop.log"
+    log.write_text("=== try 1: 2026-10-11 08:42 ===\n=== try 1 done 10:46: 1597 article(s) still open; run folder x ===\n"
+                   "=== try 2: 2026-10-11 23:00 ===\n=== try 2 done 01:10: 1500 article(s) still open; run folder x ===\n")
+    assert report_figures.progress(log, tmp_path).exists()
+    assert "2026-10-12T01:10,1500" in (tmp_path / "progress.csv").read_text()  # finished after midnight

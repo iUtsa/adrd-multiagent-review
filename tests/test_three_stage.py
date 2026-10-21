@@ -311,3 +311,156 @@ def test_anthropic_prompt_cache_marks_the_instructions_and_prices_cached_tokens(
     plain = LangChainLLM(cfg.model_copy(update={"prompt_cache": False}), chat_model=Chat(), cache=ResponseCache(None))
     plain.structured(ScreeningAnswer, "RULES", "PAPER", role="title")
     assert seen["system"] == "RULES"
+
+
+def test_stage_files_match_the_flow_and_hide_the_ai_columns(tmp_path):
+    from openpyxl import load_workbook
+
+    from adrd_review.eval import stages
+    from adrd_review.graph.runner import _dump
+
+    on, off = ON_TOPIC, OFF_TOPIC.model_copy(update={"pmid": "2"})
+    nofull = Article(pmid="3", title="The MMSE for dementia in older adults, again.", abstract="We evaluated the MMSE for dementia.")
+    source = lambda a: FullTextResult(PAPER, "pmc", "PMC1") if a.pmid != "3" else FullTextResult(None, None, "subscription", link=None)
+    llms = [FakeLLM(ModelConfig(provider="fake", model=s), default_responders(CODEBOOK, s)) for s in ["keyword-rules", "keyword-strict"]]
+    opts = PipelineOptions(title_stage=True, eligibility=True, annotate=False, missing_fulltext="not_retrieved", fulltext_source=source)
+    g = build_pipeline(CODEBOOK, llms[0], llms[0], [Reviewer(c, m, m) for c, m in zip("AB", llms)], opts)
+    states = [g.invoke({"article": a}) for a in (on, off, nofull)]
+    (tmp_path / "decisions.jsonl").write_text(
+        "\n".join(json.dumps(_dump({k: v for k, v in s.items() if k != "usage"} | {"pmid": s["article"].pmid})) for s in states))
+    (tmp_path / "failures.json").write_text("[]")
+
+    out = stages.export(tmp_path, n=1, seed=1, codebook=CODEBOOK)
+    rows = stages.collect(tmp_path, CODEBOOK)
+    flow = flow_counts(states, 0, CODEBOOK)
+    assert len(rows["title"]) == flow["title"]["screened"] == 3
+    assert [r["pmid"] for r in rows["title"] if r["ai_outcome"] == "excluded"] == ["2"]
+    assert rows["title"][1]["main reason"].startswith(next(iter(flow["title"]["reasons"]))[:2])
+    assert rows["title"][0]["abstract"] == "" and rows["abstract"][0]["abstract"]  # titles: what the reviewers saw
+    assert {r["pmid"]: r["ai_outcome"] for r in rows["fulltext"]} == {"1": "passed", "3": "not retrieved"}
+    assert [r["pmid"] for r in rows["included"]] == ["1"] == [str(flow["included"]["total"])]
+    assert all(r["prof_decision"] == "" for rs in rows.values() for r in rs)
+
+    wb = load_workbook(out / "stages.xlsx")
+    assert wb.sheetnames == ["random sample", "1 titles", "2 abstracts", "3 full text", "4 included", "how to check"]
+    ws = wb["2 abstracts"]
+    header = [c.value for c in ws[1]]
+    ai = ws.cell(row=1, column=header.index("ai_outcome") + 1).column_letter
+    assert ws.column_dimensions[ai].hidden  # blind: the AI's decision is hidden until unhidden
+    assert header.index("prof_decision") < header.index("ai_outcome")
+    picked = stages.sample(rows, n=1, seed=1)
+    assert picked == stages.sample(rows, n=1, seed=1)  # the same seed draws the same papers
+    assert {(r["stage"], r["ai_outcome"]) for r in picked} == {(s, r["ai_outcome"]) for s, rs in rows.items() for r in rs
+                                                               if r["ai_outcome"] != "not retrieved"}  # free full text only
+    import csv
+    assert len(list(csv.DictReader((out / "1_title.csv").open()))) == 3
+
+
+def test_an_article_that_fails_part_way_keeps_its_finished_stages_in_the_stage_files(tmp_path):
+    from adrd_review.eval import stages
+    from adrd_review.graph.runner import _dump, _title_only, run_articles
+
+    def broken(article):
+        raise RuntimeError("daily limit used up")
+
+    llm = FakeLLM(ModelConfig(provider="fake", model="keyword-rules"), default_responders(CODEBOOK, "keyword-rules"))
+    opts = PipelineOptions(title_stage=True, eligibility=True, annotate=False, fulltext_source=broken)
+    g = build_pipeline(CODEBOOK, llm, llm, [Reviewer("A", llm, llm)], opts)
+    states, failures, _ = run_articles(g, [ON_TOPIC], concurrency=1)
+    (fail,) = failures
+    assert not states and "daily limit" in fail["error"]
+    partial = fail["partial"]  # title and abstract were decided before the full text failed
+    assert partial["title_decision"].labels == ["include"] and partial["screening_decision"].labels == ["include"]
+
+    # a deferred article (its abstract batch failed) keeps its title decision from the batch votes
+    a = Reviewer("A", llm, llm)
+    later = Article(pmid="5", title="Deep learning for dementia.", abstract="x")
+    initial = {"5": {"prepared": {"title": {"A": tv("A", "include")}}, "usage": []}}
+    assert _title_only(later, initial, [a])["partial"]["title_decision"].labels == ["include"]
+    assert _title_only(later, {"5": {"prepared": {}}}, [a]) == {}  # title stage not finished: nothing to show
+
+    open_rows = [_dump(partial) | {"pmid": "1", "open": fail["error"]},
+                 _dump(_title_only(later, initial, [a])["partial"]) | {"pmid": "5", "open": "Deferred: abstract batch"}]
+    (tmp_path / "in_progress.jsonl").write_text("\n".join(json.dumps(r) for r in open_rows))
+    (tmp_path / "decisions.jsonl").write_text("")
+    rows = stages.collect(tmp_path, CODEBOOK)
+    assert {r["pmid"]: r["ai_outcome"] for r in rows["title"]} == {"1": "passed", "5": "passed"}
+    assert {r["pmid"]: r["ai_outcome"] for r in rows["abstract"]} == {"1": "passed", "5": "still open"}
+    assert {r["pmid"]: r["ai_outcome"] for r in rows["fulltext"]} == {"1": "still open"} and not rows["included"]
+    assert rows["fulltext"][0]["how decided"].startswith("open: RuntimeError")
+    assert all(r["ai_outcome"] != "still open" for r in stages.sample(rows, n=5))  # nothing to check yet
+
+
+def test_second_look_rereads_only_the_papers_left_for_a_person(tmp_path):
+    from adrd_review import second_look
+    from adrd_review.llm import LLMError
+
+    paper = Article(pmid="7", title="Deep learning on MRI to detect Alzheimer's disease in older adults.",
+                    abstract="We trained a CNN on ADNI MRI scans to predict dementia.",
+                    fulltext="We trained a convolutional neural network on ADNI MRI scans of 800 older adults aged 65 "
+                             "and over to detect Alzheimer's disease and predict dementia.")
+
+    def state(pmid, decision, votes):
+        return {"pmid": pmid, "article": paper.model_copy(update={"pmid": pmid}).model_dump(),
+                "title_decision": {"labels": ["include"]}, "screening_decision": {"labels": ["include"]},
+                "fulltext_info": {"stage": 2, "used": True}, "eligibility_decision": {"labels": [decision]},
+                "eligibility_votes": votes}
+
+    unclear = [{"reviewer_id": "A", "labels": ["unclear"], "rule_ids": ["I4"]},
+               {"reviewer_id": "B", "labels": ["include"], "rule_ids": ["I1", "I2", "I3", "I4"]}]
+    rows = [state("7", "unclear", unclear), state("8", "include", unclear[1:])]
+    (tmp_path / "decisions.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    (tmp_path / "run_meta.json").write_text(json.dumps({"config": {"codebook": str(ROOT / "configs/codebook_aiml.yaml")}}))
+
+    assert second_look.open_rules(rows[0], AIML) == ["I4"]
+    llm = FakeLLM(ModelConfig(provider="fake", model="keyword-rules"), default_responders(AIML, "keyword-rules"))
+    (row,) = second_look.run(tmp_path, llm=llm)  # only the paper left for a person, not the included one
+    assert row["pmid"] == "7" and row["open rules"] == "I4"
+    assert row["second look"] in second_look.OUTCOME.values() and row["model"] == "fake:keyword-rules"
+    assert (tmp_path / "second_look.csv").exists()
+
+    class Down:
+        config = ModelConfig(provider="fake", model="down")
+
+        def structured(self, *a, **k):
+            raise LLMError("down")
+
+    (row,) = second_look.run(tmp_path, llm=Down())
+    assert row["second look"] == "for the professor" and "failed" in row["reasoning"]  # never guessed
+
+
+def test_age_check_applies_65_from_quoted_ages_only():
+    from adrd_review import age_check as ac
+
+    paper = Article(pmid="9", title="t", abstract="a",
+                    fulltext="Participants aged 65 years or older were enrolled. The mean age was 72.4 years. "
+                             "In the second cohort the mean age was 61.5 years.")
+    fact = ac.AgeFact
+    assert ac.decide(ac.AgeAnswer(min_age=fact(value=65, quote="aged 65 years or older")), paper)[0] == "met"
+    assert ac.decide(ac.AgeAnswer(mean_age=fact(value=72.4, quote="The mean age was 72.4 years")), paper)[0] == "met"
+    assert ac.decide(ac.AgeAnswer(mean_age=fact(value=61.5, quote="the mean age was 61.5 years")), paper)[0] == "not_met"
+    # a number whose quote is not in the paper, or does not contain the number, counts for nothing
+    assert ac.decide(ac.AgeAnswer(mean_age=fact(value=70, quote="The mean age was 70 years")), paper)[0] == "unclear"
+    assert ac.decide(ac.AgeAnswer(mean_age=fact(value=80, quote="The mean age was 72.4 years")), paper)[0] == "unclear"
+    assert ac.decide(ac.AgeAnswer(), paper)[0] == "unclear"
+    assert ac.open_only_on_age({"eligibility_votes": [{"labels": ["unclear"], "rule_ids": ["I4"]},
+                                                      {"labels": ["include"], "rule_ids": ["I1", "I2"]}]})
+    assert not ac.open_only_on_age({"eligibility_votes": [{"labels": ["unclear"], "rule_ids": ["I2", "I4"]}]})
+
+
+def test_final_results_summary_counts_each_paper_once_and_keeps_paid_access_aside():
+    from adrd_review import final_results as fr
+
+    final = [{"stage": "title", "outcome": "excluded", "reason": "E1 Review", "decided by": "panel"},
+             {"stage": "abstract", "outcome": "excluded", "reason": "I4 Older adults (65 or over)",
+              "decided by": "age check on the abstract"},
+             {"stage": "full text", "outcome": "included", "reason": "all rules met", "decided by": "panel"},
+             {"stage": "full text", "outcome": "for the professor", "reason": "age", "decided by": "x"},
+             {"stage": "full text", "outcome": fr.PAID, "reason": "no free full text", "decided by": ""},
+             {"stage": "full text", "outcome": fr.HAND, "reason": "blocked", "decided by": ""}]
+    s = fr.summarize(final)
+    assert s["title"] == {"screened": 6, "excluded": 1, "passed": 5}
+    assert s["abstract"]["passed"] == 4 and s["abstract"]["excluded_by_age_check"] == 1
+    assert s["fulltext_free"]["assessed"] == 2 and s["fulltext_free"]["included"] == 1  # paid / by-hand not counted
+    assert s["side_note"] == {"free_copy_to_save_by_hand": 1, "paid_access_not_assessed": 1}
+    assert fr._failing_rule("I1 met · I3 NOT MET · E1 APPLIES", {"I1": "I1 x", "I3": "I3 y", "E1": "E1 z"}) == "I3 y"

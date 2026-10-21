@@ -25,3 +25,9 @@ models:
   groq:openai/gpt-oss-120b:     {input: 0.0, output: 0.0, free_tier: true}
   groq:openai/gpt-oss-20b:      {input: 0.0, output: 0.0, free_tier: true}
   groq:qwen/qwen3.8-27b:        {input: 0.0, output: 0.0, free_tier: true}
+  # OpenRouter, paid (overflow for the Groq models above; listed prices 2026-10-20)
+  openrouter:openai/gpt-oss-120b: {input: 0.15, output: 0.60, free_tier: false}
+  openrouter:openai/gpt-oss-20b:  {input: 0.018, output: 0.09, free_tier: false}
+  openrouter:qwen/qwen3.8-27b:    {input: 0.04, output: 1.35, free_tier: false}
+  openrouter:google/gemma-4-31b-it: {input: 0.20, output: 0.40, free_tier: false}
+  openrouter:z-ai/glm-5.3:        {input: 0.079, output: 1.40, free_tier: false}

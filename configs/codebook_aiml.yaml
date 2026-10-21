@@ -7,6 +7,10 @@
 # regression alone counts as ML; reviews do not count; conference proceedings count but
 # abstract-only publications do not; older adults means 65 or over. v0.3.0: older adults is 60 or over
 # (the professor's age categories, 2026-10-08: Older Adult 60+, Adult/Middle Age 40-59).
+# CORRECTION 2026-10-21 (Utsa): the professor's rule is 65 or over (email 2026-10-07); the 60+ record of
+# 2026-10-08 was wrong. The rule text below still says 60 because it is part of every cached reviewer prompt
+# (changing it would re-judge all 1,855 papers); 65+ is applied at full text by src/adrd_review/age_check.py.
+# Set the text to 65 (v0.4.0) for any future run from scratch.
 # Items still marked PROPOSED (source PROPOSED) are the agent team's and need her confirmation.
 # Keep IDs stable so results stay comparable. Bump `version` on every change.
 

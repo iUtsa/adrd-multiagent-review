@@ -9,9 +9,13 @@ Each run writes to data/runs/<name>/<timestamp>/:
                       human answer, one article per line
     usage.jsonl       one line per model call (tokens, cost, seconds, cached)
     failures.json     articles that errored (predicted 'include' so none are silently dropped)
+    in_progress.jsonl what those articles finished so far (e.g. title and abstract decisions while
+                      full text waits), same format as decisions.jsonl
     report.json       scores, cost/time, panel agreement, escalations, debate statistics, and the
                       flow: how many articles passed each stage and why the rest were excluded
     flow.png          the flow as a PRISMA-style diagram
+    stages/           every paper's decision, one file per stage, plus stages.xlsx with a random
+                      sample for a person to check (eval/stages.py)
     run_meta.json     config, codebook/gold/split hashes, git commit, timings
 With `human: queue`, articles needing a person pause; answer them with
     python -m adrd_review.human_review data/runs/<name>/<timestamp>
@@ -41,6 +45,7 @@ from adrd_review.consensus import panel_agreement
 from adrd_review.eval.metrics import usage_summary
 from adrd_review.eval.flow import flow_counts, flow_figure, format_flow
 from adrd_review.eval.score import evaluate, format_report
+from adrd_review.eval.stages import export as export_stages
 from adrd_review.freeze import prompts_sha
 from adrd_review.gold import GoldRecord, file_sha256, load_gold, write_gold
 from adrd_review.graph.pipeline import PipelineOptions, Reviewer, build_pipeline, finally_included
@@ -331,11 +336,19 @@ def run_articles(graph, articles: list[Article], concurrency: int = 4, threaded_
         cfg = {"configurable": {"thread_id": article.pmid}} if threaded_config else None
         if OUT_OF_CREDIT.is_set():  # no point starting more articles: re-run once credit is added
             return None, {"pmid": article.pmid, "error": "OutOfCredit: not started (the account ran out of credit)", "trace": ""}
+        start = {"article": article, **(initial or {}).get(article.pmid, {})}
+        latest = None
         try:
-            state = graph.invoke({"article": article, **(initial or {}).get(article.pmid, {})}, cfg)
-            return state, None
+            if threaded_config:  # human queue: invoke reports interrupts
+                return graph.invoke(start, cfg), None
+            # Streamed (invoke keeps the last of these values too), so an article that fails part-way keeps the
+            # stages it finished, e.g. its title and abstract decisions while it waits for a full-text limit.
+            for latest in graph.stream(start, cfg, stream_mode="values"):
+                pass
+            return latest, None
         except Exception as e:
-            return None, {"pmid": article.pmid, "error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()}
+            fail = {"pmid": article.pmid, "error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()}
+            return None, fail | ({"partial": latest} if latest else {})
 
     states, failures, paused = [], [], []
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
@@ -353,6 +366,23 @@ def run_articles(graph, articles: list[Article], concurrency: int = 4, threaded_
         print("\nSTOPPED: the model account ran out of credit. Add credit, then run the same command again: "
               "finished calls come from the cache, so only the rest is paid for.", file=sys.stderr)
     return states, failures, paused
+
+
+def _plain(failures: list[dict]) -> list[dict]:
+    """Failures without their partial state (saved separately in in_progress.jsonl)."""
+    return [{k: v for k, v in f.items() if k != "partial"} for f in failures]
+
+
+def _title_only(article: Article, initial: dict[str, dict], reviewers: list[Reviewer]) -> dict:
+    """A deferred article whose title batch votes are all in: its title decision, as the pipeline would make it,
+    so the stage files show it while its abstract waits (an empty dict if the title stage is not finished)."""
+    from adrd_review.consensus import combine_title
+
+    votes = (initial.get(article.pmid) or {}).get("prepared", {}).get("title") or {}
+    if not reviewers or set(votes) != {r.id for r in reviewers}:
+        return {}
+    decision = combine_title(list(votes.values()), {r.id: r.weight for r in reviewers})
+    return {"partial": {"article": article, "title_votes": list(votes.values()), "title_decision": decision}}
 
 
 def _progress(state: dict) -> str:
@@ -438,7 +468,12 @@ def write_outputs(out: Path, config: RunConfig, codebook: Codebook, gold: list[G
     with (out / "usage.jsonl").open("w") as fh:
         for u in usages:
             fh.write(json.dumps(u) + "\n")
-    (out / "failures.json").write_text(json.dumps(failures, indent=2) + "\n")
+    (out / "failures.json").write_text(json.dumps(_plain(failures), indent=2) + "\n")
+    with (out / "in_progress.jsonl").open("w") as fh:  # what the still-open articles have finished so far
+        for f in failures:
+            if f.get("partial"):
+                s = f["partial"]
+                fh.write(json.dumps(_dump({k: v for k, v in s.items() if k != "usage"} | {"pmid": f["pmid"], "open": f["error"]})) + "\n")
 
     report: dict = {"pending_human": paused}
     if not paused and gold:
@@ -488,6 +523,10 @@ def write_outputs(out: Path, config: RunConfig, codebook: Codebook, gold: list[G
                 a, info = s["article"], s["fulltext_info"]
                 w.writerow([a.pmid, a.title, a.doi or "", info.get("link") or "", info.get("reason", ""),
                             f"{config.pdf_dir}/{a.pmid}.pdf"])
+    try:  # one file per stage plus a random sample, for a person to check (eval/stages.py)
+        export_stages(out, codebook=codebook)
+    except Exception as e:  # like the figure, never worth failing a run over
+        print(f"(stage files not written: {type(e).__name__}: {e})", file=sys.stderr)
     report["debate"] = debate_stats(states, {g.pmid: g for g in gold})
     report["warnings"] = sum(
         len(v.warnings)
@@ -617,7 +656,7 @@ def execute(
     states, failures, paused = run_articles(graph, ready, config.concurrency, threaded_config=checkpointer is not None,
                                             initial=initial)
     failures += [{"pmid": a.pmid, "error": f"Deferred: {deferred.get(a.pmid, 'waiting for the title stage to finish')}", "trace": ""}
-                 for a in articles if a not in ready]
+                 | _title_only(a, initial, reviewers) for a in articles if a not in ready]
     wall = time.monotonic() - started
 
     meta = {
@@ -642,7 +681,7 @@ def execute(
     }
     (out / "run_meta.json").write_text(json.dumps(meta, indent=2) + "\n")
     if paused:
-        (out / "failures_pending.json").write_text(json.dumps(failures, indent=2) + "\n")
+        (out / "failures_pending.json").write_text(json.dumps(_plain(failures), indent=2) + "\n")
     report = write_outputs(out, config, codebook, gold, pmids, states, failures, paused, wall, reviewers)
     cached = sum(u.cached for s in states for u in s.get("usage", []))
     print_summary(report, config, part, out, cached, wall)

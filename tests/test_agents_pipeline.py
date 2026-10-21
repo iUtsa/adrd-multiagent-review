@@ -226,10 +226,10 @@ def test_runner_collects_states_failures_and_predictions():
     graph = pipeline()
 
     class Boom:
-        def invoke(self, state, config=None):
+        def stream(self, state, config=None, stream_mode="values"):
             if state["article"].pmid == "2":
                 raise RuntimeError("provider down")
-            return graph.invoke(state, config)
+            return graph.stream(state, config, stream_mode=stream_mode)
 
     states, failures, paused = run_articles(Boom(), [INCLUDE_ART, EXCLUDE_ART, NO_ABSTRACT], concurrency=2)
     assert paused == []
@@ -345,3 +345,88 @@ def test_retry_after_is_read_from_the_provider_message():
     assert retry_after_seconds(RuntimeError("Please try again in 1m12.5s")) == pytest.approx(72.5)
     assert retry_after_seconds(RuntimeError("Please try again in 2h3m50.4s")) == pytest.approx(7430.4)
     assert retry_after_seconds(RuntimeError("something else")) is None
+    # OpenRouter's daily limit gives a reset time (ms since 1970) instead of a wait
+    import time
+    reset_ms = int((time.time() + 5 * 3600) * 1000)
+    err = RuntimeError("Error code: 429 - {'error': {'message': 'Rate limit exceeded: free-models-per-day.', "
+                       f"'metadata': {{'headers': {{'X-RateLimit-Limit': '50', 'X-RateLimit-Reset': '{reset_ms}'}}}}}}}}")
+    assert retry_after_seconds(err) == pytest.approx(5 * 3600, abs=5)
+
+
+def test_overflow_host_is_used_only_after_the_daily_limit_and_never_judges_twice(tmp_path):
+    import time
+
+    from adrd_review.llm import EXHAUSTED, OUT_OF_CREDIT, LimitReached, OverflowLLM
+
+    class FailingChat(StubChat):
+        def __init__(self, error):
+            super().__init__([])
+            self.error = error
+
+        def with_structured_output(self, schema, include_raw=False, **kw):
+            stub = self
+
+            class Runnable:
+                def invoke(self, messages):
+                    stub.calls += 1
+                    raise stub.error
+
+            return Runnable()
+
+    cache = ResponseCache(tmp_path)
+    groq = ModelConfig(provider="groq", model="m")
+    router = ModelConfig(provider="openrouter", model="m")
+    EXHAUSTED[groq.label] = time.time() + 3600  # Groq's daily limit is used up
+    try:
+        backup_chat = StubChat([good_output()])
+        llm = OverflowLLM(LangChainLLM(groq, chat_model=StubChat([]), cache=cache),
+                          LangChainLLM(router, chat_model=backup_chat, cache=cache))
+        res = llm.structured(ScreeningAnswer, "s", "u", role="screening")
+        assert res.usage.model == "openrouter:m" and backup_chat.calls == 1
+        # next try, Groq has quota again: the answer already given by the overflow host is reused
+        del EXHAUSTED[groq.label]
+        groq_chat = StubChat([good_output()])
+        again = OverflowLLM(LangChainLLM(groq, chat_model=groq_chat, cache=cache),
+                            LangChainLLM(router, chat_model=StubChat([]), cache=cache))
+        assert again.structured(ScreeningAnswer, "s", "u", role="screening").usage.cached and groq_chat.calls == 0
+
+        # overflow host without credit: the call is deferred (LimitReached), the run is not stopped
+        EXHAUSTED[groq.label] = time.time() + 3600
+        broke = LangChainLLM(router, chat_model=FailingChat(RuntimeError("Error code: 402 - insufficient_quota")),
+                             cache=cache, max_attempts=1)
+        broke.stops_run_without_credit = False
+        with pytest.raises(LimitReached):
+            OverflowLLM(LangChainLLM(groq, chat_model=StubChat([]), cache=cache), broke).structured(
+                ScreeningAnswer, "s", "other", role="screening")
+        assert not OUT_OF_CREDIT.is_set() and router.label in EXHAUSTED
+    finally:
+        EXHAUSTED.pop(groq.label, None)
+        EXHAUSTED.pop(router.label, None)
+        OUT_OF_CREDIT.clear()
+
+
+def test_overflow_is_built_from_the_config_and_not_part_of_the_cache_key():
+    from adrd_review.llm import OverflowLLM, build_llm
+
+    plain = ModelConfig(provider="groq", model="m")
+    with_overflow = plain.model_copy(update={"overflow": ModelConfig(provider="openrouter", model="m")})
+    assert ResponseCache.key(plain, ScreeningAnswer, "s", "u") == ResponseCache.key(with_overflow, ScreeningAnswer, "s", "u")
+    llm = build_llm(with_overflow)
+    assert isinstance(llm, OverflowLLM)
+    assert llm.primary.max_rate_wait == OverflowLLM.OVERFLOW_AFTER_SECONDS  # no long waits when an overflow host exists
+    assert build_llm(plain).max_rate_wait is None
+
+
+def test_a_busy_per_minute_budget_sends_the_call_to_the_overflow_host(tmp_path):
+    from adrd_review.llm import OverflowLLM
+
+    cache = ResponseCache(tmp_path)
+    groq = ModelConfig(provider="groq", model="busy-m", tokens_per_minute=8000)
+    router = ModelConfig(provider="openrouter", model="busy-m")
+    groq_chat, router_chat = StubChat([good_output()]), StubChat([good_output()])
+    llm = OverflowLLM(LangChainLLM(groq, chat_model=groq_chat, cache=cache),
+                      LangChainLLM(router, chat_model=router_chat, cache=cache))
+    assert llm.structured(ScreeningAnswer, "s", "first", role="screening").usage.model == "groq:busy-m"
+    # the first call used Groq's minute budget: the next one goes to the overflow host instead of waiting
+    assert llm.structured(ScreeningAnswer, "s" * 30000, "second", role="screening").usage.model == "openrouter:busy-m"
+    assert (groq_chat.calls, router_chat.calls) == (1, 1)
