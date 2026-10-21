@@ -20,7 +20,11 @@ Not counted: 163 free copies still to save by hand; 310 paid access only. For th
 
 **Package** (`scripts/make_report.py` → `data/deliverables/2026-10-21_ADRD_screening_results/`, git-ignored): report.pdf/.html, decisions.csv, for_professor.csv, not_assessed.csv, the blind random check (professor_check.xlsx: 40 papers, 10 included + 10 excluded per stage, AI columns hidden; answer key separate), charts and diagrams.
 
-**Tests: 157 pass.**
+**Third look** (`third_look.py`, Utsa: one more model on the papers left for a person): DeepSeek V4.1 Flash (OpenRouter, ~$0.005/paper; a family used nowhere else) re-read the 185 papers: age facts with quotes at 65+, plus every rule. Settled 33 (17 included, 16 excluded: 9 for age under 65 found in the paper, 4 I1, 3 I3); 25 not re-read because the $10 OpenRouter credit ran out ($10.03 spent in total).
+
+**Final (with the third look):** titles 1,855 → 1,602; abstracts → 1,182 (420 excluded); free full text 709 → **408 included**, 143 excluded, **152 for the professor** (94 do not report age, 53 cannot be confirmed 65+, 5 other rules), 6 not finished. Three per-stage CSVs (`final/stage1_titles.csv`, `stage2_abstracts.csv`, `stage3_fulltext.csv`) list every paper at each stage with its decision, reason and quotes.
+
+**Tests: 158 pass.**
 
 ---
 

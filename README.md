@@ -16,7 +16,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system as built, its di
 
 ## Status
 
-**2026-10-21 (final): 391 papers included** of 1,855 (older adults 65+, free full text only): titles 253 excluded, abstracts 420, full text 127; 185 await the professor (173 only on age reporting). Package for the professor: `scripts/make_report.py`; one row per paper: `python -m adrd_review.final_results`.
+**2026-10-21 (final): 408 papers included** of 1,855 (older adults 65+, free full text only): titles 253 excluded, abstracts 420, full text 143; 152 await the professor (147 only on age reporting). Package for the professor: `scripts/make_report.py`; one row per paper: `python -m adrd_review.final_results`.
 
 **2026-10-21: first full pass of the professor's search done** (1,855 records; free model tiers + $2.34). Titles 1,855 → 1,602 passed; abstracts → 1,188 passed; free full texts 672 → **498 included**, 30 excluded, 120 left for a person (now getting a second look by an independent model). Free full text only: 516 paid-access papers are not assessed. Accuracy on this corpus awaits the professor's blind check. Details, diagrams and charts: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/diagrams/](docs/diagrams/README.md).
 

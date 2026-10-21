@@ -243,9 +243,9 @@ Built by `src/adrd_review/final_results.py`: every paper gets one outcome and on
 |---|---|---|---|---|
 | 1. Titles | 1,855 | 253 | 1,602 | — |
 | 2. Abstracts | 1,602 | 420 | 1,182 | — |
-| 3. Full text (free) | 709 | 127 | **391** | 185 (+6 not finished) |
+| 3. Full text (free) | 709 | 143 | **408** | 152 (+6 not finished) |
 
-*Not counted: 163 free copies still to save by hand; 310 paid access only.* The 185: 98 do not report age, 75 cannot be confirmed 65+, 12 have other rules unclear. **Age (65+)** is applied by `age_check.py` at the abstract stage (exclude only when the abstract clearly shows under 65) and at full text (age criterion, youngest/oldest, mean/median with verified quotes; with ages only per group, the youngest group's mean). Paid calls: $8.80 in total.
+*Not counted: 163 free copies still to save by hand; 310 paid access only.* The 152: 94 do not report age, 53 cannot be confirmed 65+, 5 have other rules unclear. A **third look** (`third_look.py`, DeepSeek V4.1 Flash, a family used nowhere else) re-read the 185 papers then left for the professor and settled 33 (17 included, 16 excluded); 25 could not be re-read when the OpenRouter credit ran out. **Age (65+)** is applied by `age_check.py` at the abstract stage (exclude only when the abstract clearly shows under 65) and at full text (age criterion, youngest/oldest, mean/median with verified quotes; with ages only per group, the youngest group's mean). Paid calls: $10.03 in total (the $10 credit).
 
 ![Final result](diagrams/results/final_stages.png)
 
