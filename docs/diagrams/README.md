@@ -7,6 +7,7 @@ Everything here is generated, never drawn by hand, so it can be redrawn after an
 | Image | Shows | Source |
 |---|---|---|
 | [system-overview.png](system-overview.png) | the whole system as built: protocol, ingestion, the three stages, verifier, second look, professor, outputs | `src/system-overview.mmd` |
+| [system-overview-slide.png](system-overview-slide.png) | the same on one slide: stages, decision rules and final counts only | `src/system-overview-slide.mmd` |
 | [pipeline-as-run.png](pipeline-as-run.png) | the LangGraph path the free run takes; nodes switched off in this run are grey dashed | `src/pipeline-as-run.mmd` |
 | [langgraph-full.png](langgraph-full.png) | the complete compiled graph, exported from the code (`graph.get_graph().draw_mermaid()`) | `src/langgraph_PROF_search_free.mmd` |
 | [consensus-by-stage.png](consensus-by-stage.png) | one reviewer's rule marks and quote check; the panel rule at titles, abstracts and full text | `src/consensus-by-stage.mmd` |

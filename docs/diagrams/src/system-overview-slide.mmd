@@ -1,0 +1,22 @@
+flowchart LR
+    classDef used fill:#e3eefc,stroke:#2a78d6,color:#0b0b0b
+    classDef out fill:#fde6dc,stroke:#eb6834,color:#0b0b0b
+    classDef human fill:#d9f3e9,stroke:#1baf7a,color:#0b0b0b
+    classDef inc fill:#2a78d6,stroke:#184f95,color:#ffffff
+
+    S[("PubMed search<br/><b>1,855</b> records")]:::used
+    T["<b>Titles</b><br/>3 AI reviewers<br/>excluded only if<br/>all 3 agree"]:::used
+    A["<b>Abstracts</b><br/>3 AI reviewers<br/>majority vote<br/>+ age 65+ check"]:::used
+    F["<b>Full text</b> (free copies)<br/>3 AI reviewers, majority<br/>+ 2nd and 3rd AI look<br/>+ age 65+ check"]:::used
+    I(["<b>Included</b><br/>408"]):::inc
+    H(["<b>Human review</b><br/>158"]):::human
+
+    TX["253 excluded"]:::out
+    AX["420 excluded"]:::out
+    FX["143 excluded"]:::out
+
+    S --> T -->|1,602| A -->|1,182| F --> I
+    F --> H
+    T --> TX
+    A --> AX
+    F --> FX
