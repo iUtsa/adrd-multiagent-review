@@ -81,10 +81,28 @@ box(8.15, 1.0, 3.2, 0.72, "Groq · NVIDIA · OpenRouter\nfree tiers + overflow h
 box(8.15, 0.42, 3.2, 0.48, "Response cache", fc=SURFACE, ec=INK2, size=11)
 
 arrow((5.85, 3.0), (5.85, 2.5))        # agents -> checks
-arrow((9.75, 3.0), (9.75, 2.5))  # agents -> models
+arrow((9.75, 3.0), (9.75, 2.5))        # agents -> models
 ax.text(9.9, 2.75, "model calls", fontsize=11, color=INK2, va="center")
 arrow((4.0, 1.4), (4.0, 6.3), rad=-0.35)    # checks -> pipeline decisions
 ax.text(2.55, 3.85, "decisions", fontsize=11, color=INK2, ha="center")
+
+# Right column: which model did what
+panel(12.1, 0.3, 3.6, 5.1, "Models used")
+y = 4.55
+ax.text(12.3, y, "titles & abstracts → full text", fontsize=10, color=INK2, style="italic", va="center")
+for who, m1, m2 in (("A", "gpt-oss-120b", "Nemotron 3 Ultra"), ("B", "Qwen3.8 27B", "Gemma 4 31B"),
+                    ("C", "gpt-oss-20b", "dots.3")):
+    y -= 0.62
+    ax.text(12.3, y + 0.13, who, fontsize=13, fontweight="bold", color=BLUE, va="center")
+    ax.text(12.65, y + 0.13, m1, fontsize=11.5, color=INK, va="center")
+    ax.text(12.65, y - 0.17, f"→ {m2}", fontsize=11.5, color=INK, va="center")
+y -= 0.62
+ax.text(12.3, y, "Re-checks (full text)", fontsize=10, color=INK2, style="italic", va="center")
+for what, m in (("2nd look", "GLM-5.3"), ("3rd look", "DeepSeek V4.1 Flash"), ("Age 65+", "Nemotron 3 Ultra")):
+    y -= 0.42
+    ax.text(12.3, y, what, fontsize=11, fontweight="bold", color=INK, va="center")
+    ax.text(13.35, y, m, fontsize=11, color=INK, va="center")
+arrow((12.1, 4.2), (11.6, 4.2))
 
 out = Path(__file__).resolve().parents[1] / "architecture-slide.png"
 fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.15, facecolor=SURFACE)
