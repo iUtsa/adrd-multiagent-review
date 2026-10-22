@@ -79,7 +79,7 @@ def main(argv: list[str]) -> int:
             shutil.copy(fin / f"{name}.{ext}", out / "extras/charts" / f"{name}.{ext}")
     for name in ("panel_agreement", "reviewer_votes", "model_calls", "progress"):
         shutil.copy(ROOT / "docs/diagrams/results" / f"{name}.png", out / "extras/charts" / f"{name}.png")
-    for name in ("system-overview", "system-overview-slide", "consensus-by-stage", "pipeline-as-run", "model-routing", "agent-interaction-sequence",
+    for name in ("system-overview", "system-overview-slide", "architecture-slide", "consensus-by-stage", "pipeline-as-run", "model-routing", "agent-interaction-sequence",
                  "run-loop", "timeline"):
         shutil.copy(ROOT / "docs/diagrams" / f"{name}.png", out / "extras/diagrams" / f"{name}.png")
 
