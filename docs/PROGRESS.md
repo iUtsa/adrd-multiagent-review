@@ -4,6 +4,22 @@ What was built, when, and how it was checked. Newest first. Task numbers refer t
 
 ---
 
+## 2026-10-24 — Phase 2 started: independent end-to-end reviewers, majority vote
+
+**Professor's design for phase 2:** not one model per narrow task with votes combined at every stage (phase 1), but individual, independent reviewers who each review everything, then majority vote wins. Utsa's choices: stage by stage (title → abstract → full text, stopping early on exclusion), decision + reason only, 3 reviewers, all 1,855 records.
+
+**Built** (`src/adrd_review/phase2.py`, `configs/runs/PHASE2_independent.yaml`): each reviewer uses one model for the whole review, the same "independent reviewer" role (no specialist personas), and its own path (it reads abstracts only of titles it kept, full texts only of abstracts it kept; free full text only). Same evidence standard as phase 1 (per-rule marks, verified quotes). Majority: excluded when 2 of 3 excluded (at the stage of the 2nd exclusion), included when 2 include, else human review; not assessed without a free full text. Outputs per run: reviewer_<id>.csv, final.csv, summary.json (stage table, per-reviewer counts, agreement per stage with Fleiss κ, Gwet's AC1 and pairwise Cohen's κ, comparison with phase 1).
+
+**Codebook v0.4.0** (`configs/codebook_aiml_v0.4.yaml`): older adults 65+ in the rule text; phase 1 keeps v0.3.0.
+
+**Agreement measure:** Gwet's AC1 added next to Fleiss' κ. Phase 1 titles: κ 0.40 but AC1 0.52 and 73% pairwise agreement; the title disagreement is mostly reviewer strictness (exclude rates A 38%, B 17%, C 46%; most common split: A and C exclude, B keeps), harmless under the unanimous-exclusion rule.
+
+**Reviewers (free services; three model families):** A Nemotron 3 Ultra (OpenRouter free, NVIDIA free as overflow), B GLM-5.3 (NVIDIA free; 80-280 s per call), C dots.3 (OpenRouter free). Not usable: Gemma on NVIDIA (230 s for a ping), DeepSeek on NVIDIA and free Gemma on OpenRouter (broken structured answers). Expected ~2 days unattended (`RUNNER=adrd_review.phase2 scripts/run_until_done.sh ...`), started 2026-10-24 08:25.
+
+**Tests: 162 pass.**
+
+---
+
 ## 2026-10-21 (evening) — Final cleaned result, 65+ throughout; package for the professor
 
 **Final result** (`data/runs/PROF_search_free/20261021-141010/final/`, built by `python -m adrd_review.final_results`): one outcome and one reason per paper, in the human team's order: titles (panel) → abstracts (panel, then the 65+ age rule on the abstract) → free full text (panel → second look → 65+ age check) → included / excluded / for the professor.
