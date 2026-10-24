@@ -175,3 +175,13 @@ def test_evaluate_reports_human_fleiss_when_reviewers_present():
     assert h["screening_fleiss_kappa"] == pytest.approx(
         fleiss_kappa([["include"] * 3, ["exclude", "exclude", "include"], ["exclude"] * 3])
     )
+
+
+def test_gwet_ac1_stays_high_when_one_category_dominates():
+    from adrd_review.eval.metrics import fleiss_kappa, gwet_ac1
+
+    # 3 raters, 100 items: 90 unanimous 'include', 10 where one rater says 'exclude'
+    rows = [["include"] * 3] * 90 + [["include", "include", "exclude"]] * 10
+    assert fleiss_kappa(rows) < 0  # the kappa paradox: high agreement, negative kappa
+    assert gwet_ac1(rows) > 0.9
+    assert gwet_ac1([["a", "a"], ["b", "b"]]) == 1.0 and gwet_ac1([["a", "a"]]) == 1.0

@@ -117,6 +117,26 @@ def fleiss_kappa(ratings: Sequence[Sequence[Hashable]]) -> float:
     return (p_bar - p_e) / (1 - p_e)
 
 
+def gwet_ac1(ratings: Sequence[Sequence[Hashable]]) -> float:
+    """Gwet's AC1 among a fixed number of raters: like Fleiss' kappa, but its chance agreement does not grow when
+    one category dominates, so it is not pulled down when, say, most papers are kept (the 'kappa paradox').
+    Same input as fleiss_kappa."""
+    if not ratings:
+        raise ValueError("No items to score")
+    n_raters = len(ratings[0])
+    if n_raters < 2 or any(len(r) != n_raters for r in ratings):
+        raise ValueError("Every item needs the same number of raters (at least 2)")
+    n_items = len(ratings)
+    categories = sorted({c for row in ratings for c in row}, key=str)
+    if len(categories) == 1:
+        return 1.0
+    counts = [[Counter(row)[c] for c in categories] for row in ratings]
+    p_a = sum((sum(x * (x - 1) for x in row)) / (n_raters * (n_raters - 1)) for row in counts) / n_items
+    p_cat = [sum(row[j] for row in counts) / (n_items * n_raters) for j in range(len(categories))]
+    p_e = sum(p * (1 - p) for p in p_cat) / (len(categories) - 1)
+    return (p_a - p_e) / (1 - p_e)
+
+
 # --------------------------------------------------------------------------- #
 # Multi-label annotation (e.g. instrument = {MMSE, MoCA})
 # --------------------------------------------------------------------------- #

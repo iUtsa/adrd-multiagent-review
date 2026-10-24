@@ -1,0 +1,27 @@
+# Phase 2 (2026-10-24): three independent reviewers, each reviewing every paper end to end like a human reviewer
+# (titles -> its own kept abstracts -> its own kept free full texts), one model per reviewer for the whole review,
+# no specialist personas; then majority vote on the final verdicts. Code: src/adrd_review/phase2.py.
+#   python -m adrd_review.phase2 configs/runs/PHASE2_independent.yaml --limit 30      # pilot
+#   RUNNER=adrd_review.phase2 scripts/run_until_done.sh configs/runs/PHASE2_independent.yaml
+# Free model services only (the $10 OpenRouter credit is used up). Three different model families.
+name: PHASE2_independent
+description: "Professor's 1,855 search results - 3 independent end-to-end reviewers, majority vote (codebook v0.4.0, 65+)"
+codebook: configs/codebook_aiml_v0.4.yaml
+pmids_file: data/search/prof_query_pmids.txt
+corpus_dir: data/corpus_search
+cache_dir: data/cache/llm
+pdf_dir: data/pdfs
+title_batch: 50
+abstract_batch: 4
+fulltext_max_chars: 60000
+concurrency: 4
+compare_with: data/runs/PROF_search_free/20261021-141010/final/decisions.csv
+
+reviewers:
+  - id: A   # NVIDIA Nemotron 3 Ultra: OpenRouter's free copy first, NVIDIA's free copy when it is busy or used up
+    model: {provider: openrouter, model: "nvidia/nemotron-3-ultra-550b-a55b:free", max_tokens: 16000, requests_per_minute: 20,
+            overflow: {provider: nvidia, model: nvidia/nemotron-3-ultra-550b-a55b, max_tokens: 16000, requests_per_minute: 30}}
+  - id: B   # Z.ai GLM-5.3 on NVIDIA's free service
+    model: {provider: nvidia, model: z-ai/glm-5.3, max_tokens: 16000, requests_per_minute: 30}
+  - id: C   # dots.3 on OpenRouter's free service
+    model: {provider: openrouter, model: "dots-studio/dots-3-note-preview:free", max_tokens: 16000, requests_per_minute: 20}

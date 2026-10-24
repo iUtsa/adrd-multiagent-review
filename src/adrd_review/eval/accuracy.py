@@ -3,7 +3,7 @@
 There is no human gold standard for the 1,855 search results, so accuracy proper (agreement with a person) comes
 from the professor's blind random check; until she fills it in, this module reports what can be measured honestly:
 
-    reliability     agreement among the three AI reviewers per stage: Fleiss' kappa, share of papers where all
+    reliability     agreement among the three AI reviewers per stage: Fleiss' kappa, Gwet's AC1, share where all
                     three agree, pairwise Cohen's kappa and % agreement (independent votes only)
     grounding       share of the reviewers' quotes found word for word in the text (unverifiable quotes are
                     discarded and the rule counts as unclear, so no decision rests on them)
@@ -29,7 +29,7 @@ from collections import Counter
 from itertools import combinations
 from pathlib import Path
 
-from adrd_review.eval.metrics import cohen_kappa, fleiss_kappa
+from adrd_review.eval.metrics import cohen_kappa, fleiss_kappa, gwet_ac1
 from adrd_review.eval.stages import load_states
 
 CALIBRATION = {
@@ -69,6 +69,7 @@ def reliability(run_dir: Path) -> dict:
             pairs["ABC"[i] + "-" + "ABC"[j]] = {"cohen_kappa": round(cohen_kappa(a, b), 3),
                                                "agreement": round(sum(x == y for x, y in zip(a, b)) / len(rows), 3)}
         out[name] = {"papers": len(rows), "fleiss_kappa": round(fleiss_kappa(rows), 3),
+                     "gwet_ac1": round(gwet_ac1(rows), 3),
                      "all_three_agree": round(sum(len(set(r)) == 1 for r in rows) / len(rows), 3), "pairs": pairs,
                      "votes": dict(Counter(x for r in rows for x in r))}
     quotes = bad = 0
