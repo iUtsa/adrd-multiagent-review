@@ -64,3 +64,28 @@ def test_each_reviewer_reviews_end_to_end_and_the_run_writes_the_panel_result(tm
     assert "2" not in seen or True  # a reviewer only fetches full text for papers it kept itself
     assert json.loads((out / "failures.json").read_text()) == []
     assert "title" in s["agreement"]  # agreement per stage among the reviewers
+
+
+def test_a_provider_rejecting_one_paper_does_not_block_the_reviewer(tmp_path):
+    from adrd_review.llm import LLMError
+
+    class Picky:
+        """Rejects any request that contains the off-topic paper; answers the rest like the stand-in model."""
+        config = ModelConfig(provider="fake", model="picky")
+
+        def __init__(self):
+            self.inner = FakeLLM(ModelConfig(provider="fake", model="keyword-lenient"), default_responders(CB, "keyword-lenient"))
+
+        def structured(self, schema, system, user, role):
+            if "blood pressure" in user:
+                raise LLMError("Error code: 400 - bad request")
+            return self.inner.structured(schema, system, user, role)
+
+    cfg = phase2.Phase2Config(name="t", codebook=str(ROOT / "configs/codebook_aiml_v0.4.yaml"), pmids_file="x",
+                              concurrency=1, reviewers=[{"id": "A", "model": {"provider": "fake", "model": "picky"}}])
+    rec, open_items = phase2.review(cfg.reviewers[0], Picky(), [ML, OFF], cfg, CB,
+                                    lambda a: FullTextResult(PAPER, "pmc", "PMC1"))
+    assert rec["2"]["verdict"] == "could not review"  # only the rejected paper is out
+    assert rec["1"]["verdict"] in ("included", "unclear", "excluded") and open_items == []
+    assert phase2.majority([v("could not review"), v("included"), v("included")])["outcome"] == "included"
+    assert phase2.majority([v("could not review"), v("included"), v("excluded", "title")])["outcome"] == "human review"

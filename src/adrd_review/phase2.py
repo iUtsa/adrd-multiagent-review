@@ -15,7 +15,7 @@ rule marked failed without a real quote counts as unclear. The codebook is v0.4.
 
 Majority vote (3 reviewers): excluded when 2 have excluded, at the stage where the second exclusion happened;
 included when 2 include; not assessed when the free full text is missing for the papers that reached it; otherwise
-human review.
+human review. A reviewer whose model provider rejects a paper outright ('could not review') casts no vote on it.
 
     python -m adrd_review.phase2 configs/runs/PHASE2_independent.yaml [--limit N]
     TRIES=240 RUNNER=adrd_review.phase2 scripts/run_until_done.sh configs/runs/PHASE2_independent.yaml
@@ -40,7 +40,7 @@ from pydantic import BaseModel
 from adrd_review.agents import batch, eligibility
 from adrd_review.codebook import Codebook, load_codebook
 from adrd_review.eval.metrics import cohen_kappa, fleiss_kappa, gwet_ac1
-from adrd_review.llm import LLM, ModelConfig, build_llm
+from adrd_review.llm import LLM, LimitReached, ModelConfig, build_llm
 from adrd_review.schemas import Article, Vote
 from adrd_review.tools.pubmed import fetch_articles
 
@@ -53,6 +53,10 @@ ROLE = ("an independent reviewer on a systematic review team. You review each pa
 class ReviewerConfig(BaseModel):
     id: str
     model: ModelConfig
+    # Optional per-reviewer batch sizes (a slow host needs smaller calls to finish inside its timeout); the same
+    # per-paper decision, only fewer papers per call.
+    title_batch: int | None = None
+    abstract_batch: int | None = None
 
 
 class Phase2Config(BaseModel):
@@ -97,31 +101,51 @@ def review(reviewer: ReviewerConfig, llm: LLM, articles: list[Article], cfg: Pha
     open_items: list[dict] = []
 
     def stage(name, fn, items, size):
+        """Judge items in batches. Returns False when a temporary limit left papers waiting (the next stage then
+        waits too, so its batches keep the same papers from run to run). A provider that rejects a batch outright
+        (e.g. HTTP 400 for one paper) does not block the reviewer: the batch is judged one paper at a time, and a
+        paper rejected on its own is recorded as 'could not review'."""
+        def call(chunk):
+            return fn(chunk, codebook, llm, reviewer.id, cfg.role)[0]
+
         def one(chunk):
             try:
-                return chunk, fn(chunk, codebook, llm, reviewer.id, cfg.role)[0], None
-            except Exception as e:  # a used-up limit or an error: these papers wait for the next run (cached)
-                return chunk, None, f"{type(e).__name__}: {str(e)[:200]}"
-        done, failed = 0, 0
-        for chunk, out, err in _parallel(one, _chunks(items, size), cfg.concurrency):
-            if err:
-                failed += len(chunk)
-                open_items += [{"pmid": a.pmid, "reviewer": reviewer.id, "stage": name, "error": err} for a in chunk]
-                continue
-            done += len(chunk)
-            for a in chunk:
-                votes[a.pmid][name] = out[a.pmid]
-        print(f"  reviewer {reviewer.id} · {name}: {done} judged, {failed} waiting", file=sys.stderr)
-        return failed == 0
+                return chunk, call(chunk), [], []
+            except LimitReached as e:  # a used-up limit: these papers wait for the next run (answers are cached)
+                return chunk, {}, [(a, f"{type(e).__name__}: {str(e)[:200]}") for a in chunk], []
+            except Exception as e:
+                if len(chunk) == 1:
+                    return chunk, {}, [], [(chunk[0], f"{type(e).__name__}: {str(e)[:200]}")]
+                got, waiting, rejected = {}, [], []
+                for a in chunk:  # one paper at a time, so only the paper the provider rejects stays out
+                    _, g, w, r = one([a])
+                    got.update(g)
+                    waiting += w
+                    rejected += r
+                return chunk, got, waiting, rejected
+
+        done = n_wait = n_rej = 0
+        for chunk, got, waiting, rejected in _parallel(one, _chunks(items, size), cfg.concurrency):
+            for pmid, vote in got.items():
+                votes[pmid][name] = vote
+            done += len(got)
+            n_wait += len(waiting)
+            n_rej += len(rejected)
+            open_items.extend({"pmid": a.pmid, "reviewer": reviewer.id, "stage": name, "error": err} for a, err in waiting)
+            for a, err in rejected:
+                rec[a.pmid]["could not review"] = f"{name}: {err[:120]}"
+        print(f"  reviewer {reviewer.id} · {name}: {done} judged, {n_wait} waiting, {n_rej} could not be reviewed",
+              file=sys.stderr)
+        return n_wait == 0
 
     # 1. titles (all records)
-    if not stage("title", batch.run_titles, articles, cfg.title_batch):
+    if not stage("title", batch.run_titles, articles, reviewer.title_batch or cfg.title_batch):
         return _verdicts(rec, votes, codebook), open_items  # abstracts wait until every title is judged
-    kept = [a for a in articles if votes[a.pmid]["title"].labels == ["include"]]
+    kept = [a for a in articles if "title" in votes[a.pmid] and votes[a.pmid]["title"].labels == ["include"]]
     # 2. abstracts (only what this reviewer kept)
-    if not stage("abstract", batch.run_abstracts, kept, cfg.abstract_batch):
+    if not stage("abstract", batch.run_abstracts, kept, reviewer.abstract_batch or cfg.abstract_batch):
         return _verdicts(rec, votes, codebook), open_items
-    kept = [a for a in kept if votes[a.pmid]["abstract"].labels == ["include"]]
+    kept = [a for a in kept if "abstract" in votes[a.pmid] and votes[a.pmid]["abstract"].labels == ["include"]]
 
     # 3. full text (only what this reviewer kept; free full text only)
     from adrd_review.tools.fulltext import fit_text
@@ -144,8 +168,11 @@ def review(reviewer: ReviewerConfig, llm: LLM, articles: list[Article], cfg: Pha
             n_done += 1
         elif err == "not assessed":
             rec[a.pmid]["not assessed"] = True
-        else:
+        elif err.startswith("LimitReached"):
             open_items.append({"pmid": a.pmid, "reviewer": reviewer.id, "stage": "full text", "error": err})
+            n_open += 1
+        else:  # rejected by the provider (after its own retries): not retried forever
+            rec[a.pmid]["could not review"] = f"full text: {err[:120]}"
             n_open += 1
     print(f"  reviewer {reviewer.id} · full text: {n_done} judged, {n_open} waiting", file=sys.stderr)
     return _verdicts(rec, votes, codebook), open_items
@@ -163,6 +190,8 @@ def _verdicts(rec: dict, votes: dict, codebook: Codebook) -> dict[str, dict]:
             verdict, stage, src = "excluded", "title", v["title"]
         elif v.get("abstract") and v["abstract"].labels == ["exclude"]:
             verdict, stage, src = "excluded", "abstract", v["abstract"]
+        elif r.get("could not review"):
+            verdict, stage = "could not review", r["could not review"].split(":")[0]
         elif r.get("not assessed"):
             verdict, stage = "not assessed", "full text"
         elif v.get("full text"):

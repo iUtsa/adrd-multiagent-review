@@ -21,7 +21,10 @@ reviewers:
   - id: A   # NVIDIA Nemotron 3 Ultra: OpenRouter's free copy first, NVIDIA's free copy when it is busy or used up
     model: {provider: openrouter, model: "nvidia/nemotron-3-ultra-550b-a55b:free", max_tokens: 16000, requests_per_minute: 20,
             overflow: {provider: nvidia, model: nvidia/nemotron-3-ultra-550b-a55b, max_tokens: 16000, requests_per_minute: 30}}
-  - id: B   # Z.ai GLM-5.3 on NVIDIA's free service
+  - id: B   # Z.ai GLM-5.3 on NVIDIA's free service: ~1 min even for a tiny call, so smaller batches (50 titles per
+            # call timed out and retried for over an hour, 2026-10-24)
     model: {provider: nvidia, model: z-ai/glm-5.3, max_tokens: 16000, requests_per_minute: 30}
+    title_batch: 10
+    abstract_batch: 2
   - id: C   # dots.3 on OpenRouter's free service
     model: {provider: openrouter, model: "dots-studio/dots-3-note-preview:free", max_tokens: 16000, requests_per_minute: 20}
