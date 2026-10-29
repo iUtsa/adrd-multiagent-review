@@ -232,6 +232,8 @@ def agreement(records: dict[str, dict[str, dict]], ids: list[str]) -> dict:
     """Fleiss' kappa, Gwet's AC1 and pairwise Cohen's kappa among the reviewers, per stage (papers all of them
     judged at that stage) and on the final verdicts (papers all of them finished)."""
     out = {}
+    if len(ids) < 2:  # a one-reviewer pilot has nothing to agree with
+        return out
     pmids = list(next(iter(records.values())))
     for st in (*(f"{s} decision" for s in STAGES), "verdict"):
         rows = [[records[r][p].get(st) for r in ids] for p in pmids]

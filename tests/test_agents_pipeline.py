@@ -399,7 +399,15 @@ def test_overflow_host_is_used_only_after_the_daily_limit_and_never_judges_twice
             OverflowLLM(LangChainLLM(groq, chat_model=StubChat([]), cache=cache), broke).structured(
                 ScreeningAnswer, "s", "other", role="screening")
         assert not OUT_OF_CREDIT.is_set() and router.label in EXHAUSTED
+
+        # a model the host has retired: no retries, the papers wait (LimitReached) instead of failing one by one
+        gone = ModelConfig(provider="nvidia", model="retired")
+        chat = FailingChat(RuntimeError("Error code: 410 - The model has reached its end of life"))
+        with pytest.raises(LimitReached, match="retired"):
+            LangChainLLM(gone, chat_model=chat, cache=cache, max_attempts=5).structured(ScreeningAnswer, "s", "x", role="screening")
+        assert chat.calls == 1 and gone.label in EXHAUSTED
     finally:
+        EXHAUSTED.pop("nvidia:retired", None)
         EXHAUSTED.pop(groq.label, None)
         EXHAUSTED.pop(router.label, None)
         OUT_OF_CREDIT.clear()

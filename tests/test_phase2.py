@@ -34,6 +34,7 @@ def test_majority_vote_uses_the_stage_where_the_majority_had_excluded():
     assert phase2.majority([v("included"), v("unclear"), v("excluded", "full text")])["outcome"] == "human review"
     assert phase2.majority([v("included"), v("open"), v("unclear")])["outcome"] == "open"
     assert phase2.majority([v("not assessed"), v("not assessed"), v("excluded", "title")])["outcome"] == "not assessed"
+    assert phase2.agreement({"A": {"1": {"verdict": "included"}, "2": {"verdict": "excluded"}}}, ["A"]) == {}
 
 
 def test_each_reviewer_reviews_end_to_end_and_the_run_writes_the_panel_result(tmp_path, monkeypatch):

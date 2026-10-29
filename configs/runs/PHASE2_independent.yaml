@@ -14,17 +14,20 @@ pdf_dir: data/pdfs
 title_batch: 50
 abstract_batch: 4
 fulltext_max_chars: 60000
-concurrency: 4
+concurrency: 8
 compare_with: data/runs/PROF_search_free/20261021-141010/final/decisions.csv
 
 reviewers:
   - id: A   # NVIDIA Nemotron 3 Ultra: OpenRouter's free copy first, NVIDIA's free copy when it is busy or used up
     model: {provider: openrouter, model: "nvidia/nemotron-3-ultra-550b-a55b:free", max_tokens: 16000, requests_per_minute: 20,
             overflow: {provider: nvidia, model: nvidia/nemotron-3-ultra-550b-a55b, max_tokens: 16000, requests_per_minute: 30}}
-  - id: B   # Z.ai GLM-5.3 on NVIDIA's free service: ~1 min even for a tiny call, so smaller batches (50 titles per
-            # call timed out and retried for over an hour, 2026-10-24)
-    model: {provider: nvidia, model: z-ai/glm-5.3, max_tokens: 16000, requests_per_minute: 30}
-    title_batch: 10
+  - id: B   # MiniMax M3.1 Flash on NVIDIA's free service. B started as Z.ai GLM-5.3, which NVIDIA retired on
+            # 2026-10-28 (HTTP 410) with B ~13% through the abstracts, so B restarted from the titles with MiniMax.
+            # 60-paper pilot (2026-10-29): Groq's gpt-oss-120b and Qwen 3.8 could not take any full text (8,000
+            # tokens/min free limit); NVIDIA's DeepSeek V4.1 Flash and GLM-5.3 Flash did not answer within 200 s;
+            # MiniMax finished all stages, kappa 0.80 against phase 1 on the 32 papers both decided.
+    model: {provider: nvidia, model: minimaxai/minimax-m3.1-flash, max_tokens: 16000, requests_per_minute: 30}
+    title_batch: 25
     abstract_batch: 2
   - id: C   # dots.3 on OpenRouter's free service
     model: {provider: openrouter, model: "dots-studio/dots-3-note-preview:free", max_tokens: 16000, requests_per_minute: 20}

@@ -91,6 +91,15 @@ class LimitReached(LLMError):
 _CREDIT_SIGNS = ("credit balance is too low", "insufficient_quota", "credit_balance_exhausted", "no credits remaining")
 
 
+# The host has retired the model (NVIDIA: HTTP 410 "has reached its end of life"); retrying never helps.
+_GONE_SIGNS = ("end of life", "no longer available", "error code: 410")
+
+
+def is_model_gone(error: BaseException) -> bool:
+    text = str(error).lower()
+    return any(s in text for s in _GONE_SIGNS)
+
+
 def is_out_of_credit(error: BaseException) -> bool:
     text = str(error).lower()
     return any(s in text for s in _CREDIT_SIGNS)
@@ -361,6 +370,9 @@ class LangChainLLM:
                     if self.stops_run_without_credit:
                         OUT_OF_CREDIT.set()
                     raise OutOfCredit(f"{self.config.label}: the account is out of credit ({e})") from e
+                if is_model_gone(e):  # papers wait (not "could not review") until the config names another model
+                    EXHAUSTED[self.config.label] = time.time() + 7 * 86400
+                    raise LimitReached(f"{self.config.label}: the host has retired this model; change it in the config ({e})") from e
                 if attempt == self.max_attempts:
                     break
                 # Per-minute token limits (e.g. Groq free tier: 8,000 tokens/min) need a real pause.
