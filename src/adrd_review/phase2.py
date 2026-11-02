@@ -161,7 +161,7 @@ def review(reviewer: ReviewerConfig, llm: LLM, articles: list[Article], cfg: Pha
         except Exception as e:
             return a, None, f"{type(e).__name__}: {str(e)[:200]}"
 
-    n_done = n_open = 0
+    n_done = n_open = n_rej = 0
     for a, vote, err in _parallel(full, kept, cfg.concurrency):
         if vote is not None:
             votes[a.pmid]["full text"] = vote
@@ -173,8 +173,9 @@ def review(reviewer: ReviewerConfig, llm: LLM, articles: list[Article], cfg: Pha
             n_open += 1
         else:  # rejected by the provider (after its own retries): not retried forever
             rec[a.pmid]["could not review"] = f"full text: {err[:120]}"
-            n_open += 1
-    print(f"  reviewer {reviewer.id} · full text: {n_done} judged, {n_open} waiting", file=sys.stderr)
+            n_rej += 1
+    print(f"  reviewer {reviewer.id} · full text: {n_done} judged, {n_open} waiting, {n_rej} could not be reviewed",
+          file=sys.stderr)
     return _verdicts(rec, votes, codebook), open_items
 
 
