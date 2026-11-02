@@ -291,10 +291,6 @@ def random_check(final: list[dict], run_dir: Path, out: Path, n: int = 10, seed:
     The professor's file shows only the paper; the AI's decision is in a separate answer key (and hidden columns)."""
     import random
 
-    from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill
-    from openpyxl.worksheet.datavalidation import DataValidation
-
     from adrd_review.eval.stages import load_states
 
     abstracts = {s["pmid"]: s["article"].get("abstract") or "" for s in load_states(run_dir)}
@@ -321,6 +317,30 @@ def random_check(final: list[dict], run_dir: Path, out: Path, n: int = 10, seed:
         w.writeheader()
         w.writerows(rows)
 
+    write_blind_workbook(rows, out / "random_check.xlsx", "AI outcome", [
+        f"{len(rows)} papers drawn at random (seed {seed}): {n} included, {n} excluded at title, {n} at abstract, "
+        f"{n} at full text, in random order. Free full text only.",
+        "For each paper, decide from the abstract and, if needed, the full paper (PubMed link) whether it belongs in "
+        "the review under your criteria: include or exclude, and the main rule.",
+        "The AI's decision is in the hidden columns on the right (click the + above them) and in "
+        "random_check_answer_key.csv: look only after deciding.",
+        CRITERIA,
+    ])
+    return rows
+
+
+CRITERIA = ("Criteria: I1 dementia/Alzheimer's (MCI only together with it); I2 AI/ML (logistic regression counts); "
+            "I3 detection/diagnosis/monitoring/prediction; I4 older adults 65+; E1 review; E2 abstract only; "
+            "E3 no original results; E4 not human.")
+
+
+def write_blind_workbook(rows: list[dict], path: Path, first_hidden: str, how_lines: list[str]) -> None:
+    """A sheet to check papers blind: the columns from `first_hidden` on are hidden (the AI's answers), the decision
+    column offers include / exclude / unsure, and a second sheet explains the check."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.worksheet.datavalidation import DataValidation
+
     wb = Workbook()
     ws = wb.active
     ws.title = "check (blind)"
@@ -339,7 +359,7 @@ def random_check(final: list[dict], run_dir: Path, out: Path, n: int = 10, seed:
         for cell in row:
             cell.alignment = Alignment(wrap_text=True, vertical="top")
         row[2].hyperlink = row[2].value
-    first_ai = cols.index("AI outcome") + 1
+    first_ai = cols.index(first_hidden) + 1
     ws.column_dimensions.group(ws.cell(row=1, column=first_ai).column_letter,
                                ws.cell(row=1, column=len(cols)).column_letter, hidden=True)
     dv = DataValidation(type="list", formula1='"include,exclude,unsure"', allow_blank=True)
@@ -348,23 +368,12 @@ def random_check(final: list[dict], run_dir: Path, out: Path, n: int = 10, seed:
     dv.add(f"{col}2:{col}{len(rows) + 1}")
     ws.freeze_panes = "D2"
     how = wb.create_sheet("how to check")
-    for line in [
-        f"{len(rows)} papers drawn at random (seed {seed}): {n} included, {n} excluded at title, {n} at abstract, "
-        f"{n} at full text, in random order. Free full text only.",
-        "For each paper, decide from the abstract and, if needed, the full paper (PubMed link) whether it belongs in "
-        "the review under your criteria: include or exclude, and the main rule.",
-        "The AI's decision is in the hidden columns on the right (click the + above them) and in "
-        "random_check_answer_key.csv: look only after deciding.",
-        "Criteria: I1 dementia/Alzheimer's (MCI only together with it); I2 AI/ML (logistic regression counts); "
-        "I3 detection/diagnosis/monitoring/prediction; I4 older adults 65+; E1 review; E2 abstract only; "
-        "E3 no original results; E4 not human.",
-    ]:
+    for line in how_lines:
         how.append([line])
     how.column_dimensions["A"].width = 120
     for c in how["A"]:
         c.alignment = Alignment(wrap_text=True)
-    wb.save(out / "random_check.xlsx")
-    return rows
+    wb.save(path)
 
 
 def main(argv: list[str] | None = None) -> int:
