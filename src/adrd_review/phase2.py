@@ -249,6 +249,15 @@ def agreement(records: dict[str, dict[str, dict]], ids: list[str]) -> dict:
     return out
 
 
+def stage_table(final: dict[str, dict]) -> dict:
+    oc = Counter((f["outcome"], f["stage"]) for f in final.values())
+    t_ex, a_ex = oc[("excluded", "title")], oc[("excluded", "abstract")]
+    return {"titles": {"screened": len(final), "excluded": t_ex, "passed": len(final) - t_ex},
+            "abstracts": {"screened": len(final) - t_ex, "excluded": a_ex, "passed": len(final) - t_ex - a_ex},
+            "full text": {k: oc[(k, "full text")] for k in ("included", "excluded", "human review", "not assessed")},
+            "open": sum(f["outcome"] == "open" for f in final.values())}
+
+
 def compare(final: dict[str, dict], phase1_csv: Path) -> dict:
     """Phase 1 vs phase 2 on the papers both decided (included vs not included)."""
     p1 = {r["pmid"]: r for r in csv.DictReader(phase1_csv.open())}
@@ -306,16 +315,9 @@ def run(cfg: Phase2Config, config_path: Path, limit: int | None = None, llm_for=
         w.writeheader()
         w.writerows(final.values())
 
-    oc = Counter((f["outcome"], f["stage"]) for f in final.values())
-    t_ex, a_ex = oc[("excluded", "title")], oc[("excluded", "abstract")]
     summary = {
         "records": len(final),
-        "stage_table": {"titles": {"screened": len(final), "excluded": t_ex, "passed": len(final) - t_ex},
-                        "abstracts": {"screened": len(final) - t_ex, "excluded": a_ex,
-                                      "passed": len(final) - t_ex - a_ex},
-                        "full text": {k: oc[(k, "full text")] for k in ("included", "excluded", "human review",
-                                                                       "not assessed")},
-                        "open": sum(f["outcome"] == "open" for f in final.values())},
+        "stage_table": stage_table(final),
         "per_reviewer": {r: dict(Counter(f"{v['verdict']}" + (f" at {v['stage']}" if v["verdict"] == "excluded" else "")
                                          for v in records[r].values())) for r in ids},
         "agreement": agreement(records, ids),
